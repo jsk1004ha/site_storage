@@ -77,6 +77,15 @@
   </div>
 
   <main>
+    <section id="bulkBar" class="bulk-bar" hidden>
+      <span id="bulkCount">0개 선택됨</span>
+      <button id="bulkToggleVisibleBtn" type="button">현재 목록 전체 선택</button>
+      <button id="bulkMoveFolderBtn" type="button">폴더 이동</button>
+      <button id="bulkAddTagBtn" type="button">태그 추가</button>
+      <button id="bulkRemoveTagBtn" type="button">태그 제거</button>
+      <button id="bulkDeleteBtn" type="button" class="danger">선택 삭제</button>
+      <button id="bulkClearBtn" type="button">선택 해제</button>
+    </section>
     <section id="cardsContainer"></section>
   </main>
 
@@ -133,13 +142,13 @@
         <label for="siteName">사이트 이름</label>
         <input type="text" id="siteName" placeholder="사이트 이름" />
         <label for="siteFolder">폴더</label>
-        <input type="text" id="siteFolder" placeholder="기본" />
+        <input type="text" id="siteFolder" placeholder="기본" list="folderSuggestions" />
         <label for="siteThumbUrl">썸네일 URL</label>
         <input type="url" id="siteThumbUrl" placeholder="자동 추출" />
         <label for="siteFaviconUrl">파비콘 URL</label>
         <input type="url" id="siteFaviconUrl" placeholder="자동 추출" />
         <label for="siteTags">태그 (띄어쓰기 또는 쉼표로 구분)</label>
-        <input type="text" id="siteTags" placeholder="예: 개발 디자인" />
+        <input type="text" id="siteTags" placeholder="예: 개발 디자인" list="tagSuggestions" />
         <label for="siteDesc">메모 (선택)</label>
         <textarea id="siteDesc" rows="3" placeholder="메모"></textarea>
         <div class="sheet-buttons">
@@ -149,6 +158,9 @@
       </div>
     </div>
   </div>
+
+  <datalist id="folderSuggestions"></datalist>
+  <datalist id="tagSuggestions"></datalist>
 
   <script src="../app.js"></script>
 </body>
