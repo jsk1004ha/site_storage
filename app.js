@@ -16,6 +16,8 @@
   const DATA_KEY = "rememberUnifiedDataV2";
   const GOOGLE_CONFIG_KEY = "rememberGoogleConfigV1";
   const GOOGLE_TOKEN_KEY = "rememberGoogleTokenV1";
+  const AUTO_SYNC_DELAY_MS = 1600;
+  const AUTO_SYNC_ERROR_COOLDOWN_MS = 15000;
 
   const DRIVE_FILE_NAME = "remember-sync-v2.json";
   const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
@@ -28,6 +30,9 @@
   let sheetMode = "add";
   let smartFilter = "";
   let syncInFlight = false;
+  let autoSyncTimer = null;
+  let autoSyncPending = false;
+  let lastAutoSyncErrorAt = 0;
 
   const searchInput = byId("searchInput");
   const sortSelect = byId("sortSelect");
@@ -54,6 +59,9 @@
   const importFileInput = byId("importFile");
   const bookmarkletBtn = byId("bookmarkletBtn");
   const saveCurrentTabBtn = byId("saveCurrentTabBtn");
+  const settingsOverlay = byId("settingsOverlay");
+  const openSettingsBtn = byId("openSettingsBtn");
+  const closeSettingsBtn = byId("closeSettingsBtn");
 
   const driveStatusEl = byId("driveStatus");
   const driveConnectBtn = byId("driveConnectBtn");
@@ -73,6 +81,7 @@
   refreshDriveStatus();
   render();
   checkIncomingUrl();
+  scheduleAutoSync({ immediate: true });
 
   function byId(id) {
     return document.getElementById(id);
@@ -137,11 +146,27 @@
 
     saveBtn?.addEventListener("click", saveBookmarkFromSheet);
     openSheetBtn?.addEventListener("click", openAdd);
+    openSettingsBtn?.addEventListener("click", openSettings);
+    closeSettingsBtn?.addEventListener("click", closeSettings);
 
     sheetOverlay?.addEventListener("click", (event) => {
       if (event.target === sheetOverlay) {
         closeSheet();
       }
+    });
+
+    settingsOverlay?.addEventListener("click", (event) => {
+      if (event.target === settingsOverlay) {
+        closeSettings();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      closeSheet();
+      closeSettings();
     });
 
     exportBtn?.addEventListener("click", exportData);
@@ -160,6 +185,7 @@
     driveConnectBtn?.addEventListener("click", () => {
       runDriveTask(async () => {
         await ensureGoogleToken();
+        scheduleAutoSync({ immediate: true });
         showToast("Google Drive 연결 완료");
       });
     });
@@ -204,6 +230,7 @@
 
       saveGoogleConfig(clientId);
       clearGoogleToken();
+      cancelAutoSync();
       refreshDriveStatus();
       showToast("Client ID를 저장했습니다");
     });
@@ -214,11 +241,22 @@
       }
       clearGoogleConfig();
       clearGoogleToken();
+      cancelAutoSync();
       if (googleClientIdInput) {
         googleClientIdInput.value = "";
       }
       refreshDriveStatus();
       showToast("Google 설정을 초기화했습니다");
+    });
+
+    window.addEventListener("focus", () => {
+      scheduleAutoSync({ immediate: true });
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        scheduleAutoSync({ immediate: true });
+      }
     });
   }
 
@@ -251,27 +289,107 @@
     driveStatusEl.className = "drive-status offline";
   }
 
-  function runDriveTask(task) {
-    if (syncInFlight) {
+  function canAutoSync() {
+    const config = getGoogleConfig();
+    if (!config.clientId) {
+      return false;
+    }
+    return !!getStoredGoogleToken();
+  }
+
+  function cancelAutoSync() {
+    if (autoSyncTimer) {
+      clearTimeout(autoSyncTimer);
+      autoSyncTimer = null;
+    }
+    autoSyncPending = false;
+  }
+
+  function scheduleAutoSync(options = {}) {
+    if (!canAutoSync()) {
+      cancelAutoSync();
       return;
+    }
+
+    if (autoSyncTimer) {
+      clearTimeout(autoSyncTimer);
+      autoSyncTimer = null;
+    }
+
+    if (syncInFlight) {
+      autoSyncPending = true;
+      return;
+    }
+
+    const delay = options.immediate ? 100 : AUTO_SYNC_DELAY_MS;
+    autoSyncTimer = setTimeout(() => {
+      autoSyncTimer = null;
+      runAutoSync();
+    }, delay);
+  }
+
+  function runAutoSync() {
+    if (!canAutoSync()) {
+      cancelAutoSync();
+      return;
+    }
+
+    if (syncInFlight) {
+      autoSyncPending = true;
+      return;
+    }
+
+    runDriveTask(
+      async () => {
+        await syncWithDrive({ interactive: false });
+        render();
+      },
+      { silent: true }
+    ).then((succeeded) => {
+      if (succeeded) {
+        lastAutoSyncErrorAt = 0;
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastAutoSyncErrorAt >= AUTO_SYNC_ERROR_COOLDOWN_MS) {
+        lastAutoSyncErrorAt = now;
+        showToast("자동 동기화 실패: 설정에서 Drive 상태를 확인해주세요");
+      }
+    });
+  }
+
+  function runDriveTask(task, options = {}) {
+    if (syncInFlight) {
+      return Promise.resolve(false);
     }
 
     syncInFlight = true;
     refreshDriveStatus("syncing");
 
-    Promise.resolve()
+    return Promise.resolve()
       .then(task)
-      .then(() => {
-        refreshDriveStatus();
-      })
+      .then(() => true)
       .catch((error) => {
-        refreshDriveStatus();
-        const message =
-          error instanceof Error ? error.message : "Drive 작업 중 오류가 발생했습니다";
-        showToast(message);
+        if (!options.silent) {
+          const message =
+            error instanceof Error ? error.message : "Drive 작업 중 오류가 발생했습니다";
+          showToast(message);
+        }
+        return false;
       })
       .finally(() => {
+        refreshDriveStatus();
         syncInFlight = false;
+
+        if (autoSyncPending) {
+          const shouldResume = canAutoSync();
+          autoSyncPending = false;
+          if (!shouldResume) {
+            return;
+          }
+          scheduleAutoSync({ immediate: true });
+        }
       });
   }
   function render() {
@@ -549,6 +667,31 @@
     renderBookmarks();
     renderTagFilters();
   }
+
+  function openSettings() {
+    if (!settingsOverlay) {
+      return;
+    }
+
+    settingsOverlay.hidden = false;
+    requestAnimationFrame(() => {
+      settingsOverlay.classList.add("open");
+    });
+  }
+
+  function closeSettings() {
+    if (!settingsOverlay || settingsOverlay.hidden) {
+      return;
+    }
+
+    settingsOverlay.classList.remove("open");
+    setTimeout(() => {
+      if (!settingsOverlay.classList.contains("open")) {
+        settingsOverlay.hidden = true;
+      }
+    }, 250);
+  }
+
   function openAdd() {
     sheetMode = "add";
     editId = null;
@@ -657,6 +800,7 @@
       removeTombstone(data, newItem.id);
       data.updatedAt = now;
       saveData(data, { touch: false });
+      scheduleAutoSync();
       showToast("저장했어요");
     } else if (sheetMode === "edit" && editId) {
       const index = data.bookmarks.findIndex((item) => item.id === editId);
@@ -674,6 +818,7 @@
         removeTombstone(data, editId);
         data.updatedAt = now;
         saveData(data, { touch: false });
+        scheduleAutoSync();
         showToast("수정했습니다");
       }
     }
@@ -705,6 +850,7 @@
     upsertTombstone(data, item.id, now);
     data.updatedAt = now;
     saveData(data, { touch: false });
+    scheduleAutoSync();
 
     render();
     showToast("삭제했습니다", { undo: true });
@@ -736,6 +882,7 @@
     removeTombstone(data, restoredItem.id);
     data.updatedAt = now;
     saveData(data, { touch: false });
+    scheduleAutoSync();
 
     deletedItem = null;
     if (undoTimeout) {
@@ -766,6 +913,7 @@
 
     data.updatedAt = now;
     saveData(data, { touch: false });
+    scheduleAutoSync();
     renderBookmarks();
 
     if (navigator.vibrate) {
@@ -790,6 +938,7 @@
 
     data.updatedAt = now;
     saveData(data, { touch: false });
+    scheduleAutoSync();
     renderBookmarks();
   }
 
@@ -856,6 +1005,7 @@
 
         normalized.updatedAt = Date.now();
         saveData(normalized, { touch: false });
+        scheduleAutoSync();
         render();
         showToast("데이터를 복구했어요");
       } catch (_error) {
@@ -1268,7 +1418,8 @@
     localStorage.removeItem(GOOGLE_TOKEN_KEY);
   }
 
-  async function ensureGoogleToken() {
+  async function ensureGoogleToken(options = {}) {
+    const interactive = options.interactive !== false;
     const cached = getStoredGoogleToken();
     if (cached) {
       return cached.accessToken;
@@ -1277,6 +1428,10 @@
     const config = getGoogleConfig();
     if (!config.clientId) {
       throw new Error("OAuth 설정에서 Client ID를 먼저 저장해주세요");
+    }
+
+    if (!interactive) {
+      throw new Error("Google 로그인이 필요합니다. 설정에서 다시 연결해주세요");
     }
 
     let tokenResponse;
@@ -1430,8 +1585,8 @@
     });
   }
 
-  async function driveFetch(url, options = {}, allowRetry = true) {
-    const accessToken = await ensureGoogleToken();
+  async function driveFetch(url, options = {}, allowRetry = true, authOptions = {}) {
+    const accessToken = await ensureGoogleToken(authOptions);
     const headers = new Headers(options.headers || {});
     headers.set("Authorization", `Bearer ${accessToken}`);
 
@@ -1442,7 +1597,10 @@
 
     if (response.status === 401 && allowRetry) {
       clearGoogleToken();
-      return driveFetch(url, options, false);
+      if (authOptions.interactive === false) {
+        throw new Error("Google 로그인이 필요합니다. 설정에서 다시 연결해주세요");
+      }
+      return driveFetch(url, options, false, authOptions);
     }
 
     if (!response.ok) {
@@ -1454,23 +1612,23 @@
     return response;
   }
 
-  async function findDriveFile() {
+  async function findDriveFile(authOptions = {}) {
     const query = encodeURIComponent(
       `name='${DRIVE_FILE_NAME}' and 'appDataFolder' in parents and trashed=false`
     );
     const url = `https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id,name,modifiedTime)&pageSize=1`;
-    const response = await driveFetch(url, { method: "GET" });
+    const response = await driveFetch(url, { method: "GET" }, true, authOptions);
     const payload = await response.json();
     return payload.files?.[0] || null;
   }
 
-  async function downloadDriveData(fileId) {
+  async function downloadDriveData(fileId, authOptions = {}) {
     const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`;
-    const response = await driveFetch(url, { method: "GET" });
+    const response = await driveFetch(url, { method: "GET" }, true, authOptions);
     return normalizeData(await response.json());
   }
 
-  async function uploadDriveData(data, fileId) {
+  async function uploadDriveData(data, fileId, authOptions = {}) {
     const boundary = "rememberBoundary" + Date.now();
     const metadata = fileId
       ? { name: DRIVE_FILE_NAME }
@@ -1490,34 +1648,42 @@
       ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=multipart`
       : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
 
-    const response = await driveFetch(endpoint, {
-      method,
-      headers: {
-        "Content-Type": `multipart/related; boundary=${boundary}`
+    const response = await driveFetch(
+      endpoint,
+      {
+        method,
+        headers: {
+          "Content-Type": `multipart/related; boundary=${boundary}`
+        },
+        body: multipartBody
       },
-      body: multipartBody
-    });
+      true,
+      authOptions
+    );
 
     return response.json();
   }
 
-  async function syncWithDrive() {
+  async function syncWithDrive(options = {}) {
+    const authOptions = {
+      interactive: options.interactive !== false
+    };
     const local = getData();
-    const remoteFile = await findDriveFile();
+    const remoteFile = await findDriveFile(authOptions);
 
     let merged = local;
     let fileId = null;
 
     if (remoteFile) {
       fileId = remoteFile.id;
-      const remoteData = await downloadDriveData(fileId);
+      const remoteData = await downloadDriveData(fileId, authOptions);
       merged = mergeData(local, remoteData);
     }
 
     merged.updatedAt = Date.now();
     saveData(merged, { touch: false });
 
-    const uploaded = await uploadDriveData(merged, fileId);
+    const uploaded = await uploadDriveData(merged, fileId, authOptions);
     if (!uploaded?.id) {
       throw new Error("Drive 파일 저장에 실패했습니다");
     }

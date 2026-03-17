@@ -19,32 +19,43 @@
     </div>
     <div id="suggestions"></div>
     <div id="tagFilters"></div>
-
-    <section class="drive-panel">
-      <div class="drive-head">
-        <h2>Google Drive 동기화</h2>
-        <span id="driveStatus" class="drive-status offline">미연결</span>
-      </div>
-      <div class="drive-actions">
-        <button id="driveConnectBtn" type="button">Google 연결</button>
-        <button id="driveSyncBtn" type="button" class="primary">양방향 동기화</button>
-        <button id="drivePushBtn" type="button">Drive 저장</button>
-        <button id="drivePullBtn" type="button">Drive 불러오기</button>
-      </div>
-      <details class="drive-settings">
-        <summary>OAuth 설정</summary>
-        <label for="googleClientIdInput">Google OAuth Client ID</label>
-        <input id="googleClientIdInput" type="text" placeholder="xxxx.apps.googleusercontent.com" />
-        <div class="drive-settings-actions">
-          <button id="saveGoogleConfigBtn" type="button">Client ID 저장</button>
-          <button id="clearGoogleConfigBtn" type="button">초기화</button>
-        </div>
-        <p>
-          웹과 확장프로그램에서 같은 Client ID를 쓰면 동일한 Drive appDataFolder 파일을 공유합니다.
-        </p>
-      </details>
-    </section>
   </header>
+
+  <button id="openSettingsBtn" class="settings-fab" type="button">설정</button>
+
+  <div class="settings-overlay" id="settingsOverlay" hidden>
+    <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="settings-head">
+        <h2 id="settingsTitle">설정</h2>
+        <button id="closeSettingsBtn" type="button" class="settings-close">닫기</button>
+      </div>
+
+      <section class="drive-panel">
+        <div class="drive-head">
+          <h2>Google Drive 동기화</h2>
+          <span id="driveStatus" class="drive-status offline">미연결</span>
+        </div>
+        <div class="drive-actions">
+          <button id="driveConnectBtn" type="button">Google 연결</button>
+          <button id="driveSyncBtn" type="button" class="primary">양방향 동기화</button>
+          <button id="drivePushBtn" type="button">Drive 저장</button>
+          <button id="drivePullBtn" type="button">Drive 불러오기</button>
+        </div>
+        <details class="drive-settings">
+          <summary>OAuth 설정</summary>
+          <label for="googleClientIdInput">Google OAuth Client ID</label>
+          <input id="googleClientIdInput" type="text" placeholder="xxxx.apps.googleusercontent.com" />
+          <div class="drive-settings-actions">
+            <button id="saveGoogleConfigBtn" type="button">Client ID 저장</button>
+            <button id="clearGoogleConfigBtn" type="button">초기화</button>
+          </div>
+          <p>
+            웹과 확장프로그램에서 같은 Client ID를 쓰면 동일한 Drive appDataFolder 파일을 공유합니다.
+          </p>
+        </details>
+      </section>
+    </section>
+  </div>
 
   <main>
     <section id="cardsContainer"></section>
