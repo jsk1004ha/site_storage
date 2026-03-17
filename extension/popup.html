@@ -16,7 +16,7 @@
         <option value="recentVisit">최근 방문</option>
         <option value="frequent">자주 방문</option>
       </select>
-      <select id="folderFilterSelect">
+      <select id="folderFilterSelect" hidden>
         <option value="">전체 폴더</option>
       </select>
       <div class="view-toggle" id="viewToggle">
@@ -26,6 +26,7 @@
       </div>
     </div>
     <div id="suggestions"></div>
+    <div id="folderFilters"></div>
     <div id="tagFilters"></div>
   </header>
 
@@ -40,7 +41,12 @@
 
       <section class="appearance-panel">
         <h3>보기 설정</h3>
-        <button id="themeToggleBtn" type="button" class="theme-toggle-btn">다크 모드 켜기</button>
+        <div class="theme-mode-group" id="themeModeGroup" role="group" aria-label="테마 모드">
+          <button id="themeAutoBtn" type="button" class="theme-mode-btn" data-theme-mode="auto">자동</button>
+          <button id="themeLightBtn" type="button" class="theme-mode-btn" data-theme-mode="light">라이트</button>
+          <button id="themeDarkBtn" type="button" class="theme-mode-btn" data-theme-mode="dark">다크</button>
+        </div>
+        <p id="themeModeHint" class="theme-mode-hint">시스템 테마에 맞춰 자동 적용</p>
       </section>
 
       <section class="drive-panel">

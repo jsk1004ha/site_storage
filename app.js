@@ -16,6 +16,9 @@
   const DATA_KEY = "rememberUnifiedDataV2";
   const VIEW_MODE_KEY = "rememberViewModeV1";
   const THEME_KEY = "rememberThemeV1";
+  const THEME_MODE_AUTO = "auto";
+  const THEME_MODE_LIGHT = "light";
+  const THEME_MODE_DARK = "dark";
   const GOOGLE_CONFIG_KEY = "rememberGoogleConfigV1";
   const GOOGLE_TOKEN_KEY = "rememberGoogleTokenV1";
   const DRIVE_SYNC_CACHE_KEY = "rememberDriveSyncCacheV1";
@@ -33,7 +36,7 @@
   let selectedFolder = "";
   let currentSort = "recentAdd";
   let currentViewMode = "magazine";
-  let isDarkMode = false;
+  let themeMode = THEME_MODE_AUTO;
   let deletedItem = null;
   let undoTimeout = null;
   let editId = null;
@@ -49,6 +52,7 @@
   const searchInput = byId("searchInput");
   const sortSelect = byId("sortSelect");
   const folderFilterSelect = byId("folderFilterSelect");
+  const folderFiltersDiv = byId("folderFilters");
   const viewToggleButtons = Array.from(document.querySelectorAll("[data-view-mode]"));
   const cardsContainer = byId("cardsContainer");
   const tagFiltersDiv = byId("tagFilters");
@@ -85,7 +89,8 @@
   const settingsOverlay = byId("settingsOverlay");
   const openSettingsBtn = byId("openSettingsBtn");
   const closeSettingsBtn = byId("closeSettingsBtn");
-  const themeToggleBtn = byId("themeToggleBtn");
+  const themeModeHint = byId("themeModeHint");
+  const themeModeButtons = Array.from(document.querySelectorAll("[data-theme-mode]"));
 
   const readerOverlay = byId("readerOverlay");
   const readerCloseBtn = byId("readerCloseBtn");
@@ -107,7 +112,6 @@
   if (
     !searchInput ||
     !sortSelect ||
-    !folderFilterSelect ||
     !cardsContainer ||
     !tagFiltersDiv ||
     !suggestionsDiv
@@ -117,7 +121,8 @@
 
   loadUiPreferences();
   applyTheme();
-  updateThemeToggleLabel();
+  updateThemeModeControls();
+  bindSystemThemeListener();
   applyViewModeClass();
   updateViewToggleButtons();
   bindUiEvents();
@@ -137,7 +142,22 @@
       currentViewMode = savedMode;
     }
 
-    isDarkMode = localStorage.getItem(THEME_KEY) === "dark";
+    const savedTheme = String(localStorage.getItem(THEME_KEY) || "").trim();
+    if (
+      savedTheme === THEME_MODE_AUTO ||
+      savedTheme === THEME_MODE_LIGHT ||
+      savedTheme === THEME_MODE_DARK
+    ) {
+      themeMode = savedTheme;
+      return;
+    }
+
+    if (savedTheme === "true") {
+      themeMode = THEME_MODE_DARK;
+      return;
+    }
+
+    themeMode = THEME_MODE_AUTO;
   }
 
   function saveViewMode(mode) {
@@ -164,15 +184,97 @@
   }
 
   function applyTheme() {
-    document.body.dataset.theme = isDarkMode ? "dark" : "light";
-    localStorage.setItem(THEME_KEY, isDarkMode ? "dark" : "light");
+    const resolvedTheme = resolveActiveTheme();
+    document.body.dataset.theme = resolvedTheme;
+    localStorage.setItem(THEME_KEY, themeMode);
   }
 
-  function updateThemeToggleLabel() {
-    if (!themeToggleBtn) {
+  function resolveActiveTheme() {
+    if (themeMode === THEME_MODE_DARK) {
+      return THEME_MODE_DARK;
+    }
+    if (themeMode === THEME_MODE_LIGHT) {
+      return THEME_MODE_LIGHT;
+    }
+    return getSystemThemeMode();
+  }
+
+  function getSystemThemeMode() {
+    if (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    ) {
+      return THEME_MODE_DARK;
+    }
+    return THEME_MODE_LIGHT;
+  }
+
+  function setThemeMode(nextMode) {
+    if (
+      nextMode !== THEME_MODE_AUTO &&
+      nextMode !== THEME_MODE_LIGHT &&
+      nextMode !== THEME_MODE_DARK
+    ) {
       return;
     }
-    themeToggleBtn.textContent = isDarkMode ? "라이트 모드 켜기" : "다크 모드 켜기";
+    themeMode = nextMode;
+    applyTheme();
+    updateThemeModeControls();
+  }
+
+  function updateThemeModeControls() {
+    if (!themeModeButtons.length) {
+      return;
+    }
+
+    themeModeButtons.forEach((button) => {
+      const mode = button.dataset.themeMode;
+      const active = mode === themeMode;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+
+    if (!themeModeHint) {
+      return;
+    }
+
+    const resolvedTheme = resolveActiveTheme();
+    if (themeMode === THEME_MODE_AUTO) {
+      themeModeHint.textContent =
+        resolvedTheme === THEME_MODE_DARK
+          ? "시스템 설정 감지: 현재 다크 모드"
+          : "시스템 설정 감지: 현재 라이트 모드";
+      return;
+    }
+
+    themeModeHint.textContent =
+      themeMode === THEME_MODE_DARK
+        ? "수동 설정: 다크 모드 고정"
+        : "수동 설정: 라이트 모드 고정";
+  }
+
+  function bindSystemThemeListener() {
+    if (typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => {
+      if (themeMode !== THEME_MODE_AUTO) {
+        return;
+      }
+      applyTheme();
+      updateThemeModeControls();
+    };
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", onChange);
+      return;
+    }
+
+    if (typeof mediaQuery.addListener === "function") {
+      mediaQuery.addListener(onChange);
+    }
   }
 
   function handleOAuthCallbackPage() {
@@ -202,6 +304,7 @@
 
     folderFilterSelect?.addEventListener("change", function () {
       selectedFolder = this.value;
+      renderFolderFilters();
       renderBookmarks();
     });
 
@@ -261,10 +364,14 @@
     openSheetBtn?.addEventListener("click", openAdd);
     openSettingsBtn?.addEventListener("click", openSettings);
     closeSettingsBtn?.addEventListener("click", closeSettings);
-    themeToggleBtn?.addEventListener("click", () => {
-      isDarkMode = !isDarkMode;
-      applyTheme();
-      updateThemeToggleLabel();
+    themeModeButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.themeMode;
+        if (!mode || mode === themeMode) {
+          return;
+        }
+        setThemeMode(mode);
+      });
     });
 
     sheetOverlay?.addEventListener("click", (event) => {
@@ -616,39 +723,79 @@
   }
 
   function renderFolderFilters() {
-    if (!folderFilterSelect) {
-      return;
-    }
-
     const bookmarks = getBookmarks();
-    const folders = Array.from(
-      new Set(
-        bookmarks
-          .map((item) => normalizeFolderName(item.folder || ""))
-          .filter((folder) => folder)
-      )
-    ).sort((a, b) => a.localeCompare(b));
-
-    folderFilterSelect.innerHTML = "";
-    const allOption = document.createElement("option");
-    allOption.value = "";
-    allOption.textContent = "전체 폴더";
-    folderFilterSelect.appendChild(allOption);
-
-    folders.forEach((folder) => {
-      const option = document.createElement("option");
-      option.value = folder;
-      option.textContent = folder;
-      folderFilterSelect.appendChild(option);
+    const folderCounts = new Map();
+    bookmarks.forEach((item) => {
+      const folderName = normalizeFolderName(item.folder || "");
+      folderCounts.set(folderName, (folderCounts.get(folderName) || 0) + 1);
     });
 
-    if (selectedFolder && folders.includes(selectedFolder)) {
-      folderFilterSelect.value = selectedFolder;
+    const folders = Array.from(folderCounts.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0], "ko")
+    );
+
+    if (selectedFolder && !folderCounts.has(selectedFolder)) {
+      selectedFolder = "";
+    }
+
+    if (folderFilterSelect) {
+      folderFilterSelect.innerHTML = "";
+
+      const allOption = document.createElement("option");
+      allOption.value = "";
+      allOption.textContent = "전체 폴더";
+      folderFilterSelect.appendChild(allOption);
+
+      folders.forEach(([folderName]) => {
+        const option = document.createElement("option");
+        option.value = folderName;
+        option.textContent = folderName;
+        folderFilterSelect.appendChild(option);
+      });
+
+      folderFilterSelect.value = selectedFolder || "";
+    }
+
+    if (!folderFiltersDiv) {
       return;
     }
 
-    selectedFolder = "";
-    folderFilterSelect.value = "";
+    folderFiltersDiv.innerHTML = "";
+    folderFiltersDiv.appendChild(createFolderChip("전체", bookmarks.length, ""));
+
+    folders.forEach(([folderName, count]) => {
+      folderFiltersDiv.appendChild(createFolderChip(folderName, count, folderName));
+    });
+  }
+
+  function createFolderChip(label, count, value) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "folder-chip" + (selectedFolder === value ? " active" : "");
+    chip.setAttribute("aria-pressed", selectedFolder === value ? "true" : "false");
+
+    const text = document.createElement("span");
+    text.textContent = label;
+    chip.appendChild(text);
+
+    const countEl = document.createElement("span");
+    countEl.className = "count";
+    countEl.textContent = String(count);
+    chip.appendChild(countEl);
+
+    chip.onclick = () => {
+      if (selectedFolder === value) {
+        return;
+      }
+      selectedFolder = value;
+      if (folderFilterSelect) {
+        folderFilterSelect.value = value;
+      }
+      renderFolderFilters();
+      renderBookmarks();
+    };
+
+    return chip;
   }
 
   function renderTagFilters() {
@@ -887,7 +1034,9 @@
 
       const folder = document.createElement("span");
       folder.className = "card-folder";
-      folder.textContent = normalizeFolderName(item.folder || "");
+      const folderName = normalizeFolderName(item.folder || "");
+      folder.textContent = folderName;
+      folder.title = folderName;
       titleRow.appendChild(folder);
       main.appendChild(titleRow);
 
