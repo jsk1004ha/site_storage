@@ -1,53 +1,26 @@
-# Remember 통합 시스템
+# site_storage
 
-이 프로젝트는 아래 3가지를 하나로 연결합니다.
+이 폴더는 Remember의 실제 실행 파일이 들어 있는 배포 루트입니다. 웹앱과 크롬 확장프로그램이 같은 정적 리소스를 공유합니다.
 
-1. `remember.html` 웹 앱
-2. Chrome 확장프로그램(`manifest.json`, `extension/popup.html`)
-3. Google Drive(`appDataFolder`에 JSON 저장)
+전체 프로젝트 설명, 설치 방법, Google Drive 설정, 문제 해결은 상위 문서인 [`../README.md`](../README.md)를 먼저 참고하세요.
 
-## 실행
+## 이 폴더에 들어 있는 것
 
-### 웹 앱
-- 브라우저에서 `remember.html`을 열어 사용합니다.
-- Google Drive OAuth 로그인은 `file://` 에서 제한되므로, Drive 연동 시에는 `localhost` 또는 HTTPS 정적 호스팅에서 실행하세요.
+- `index.html`: 웹앱 진입점
+- `app.js`: 웹앱과 확장프로그램 팝업이 함께 사용하는 메인 로직
+- `app-style.css`: 공통 스타일시트
+- `manifest.json`: 크롬 확장프로그램 매니페스트
+- `extension/popup.html`: 확장프로그램 팝업 UI
+- `extension/background.js`: 백그라운드 저장, 알람, 컨텍스트 메뉴, Drive 동기화 처리
+- `service-worker.js`: 웹앱 오프라인 앱 셸 캐시
+- `icons/`: PWA 및 확장프로그램 아이콘
 
-### 크롬 확장프로그램
-1. Chrome에서 `chrome://extensions` 접속
-2. 개발자 모드 활성화
-3. `압축해제된 확장 프로그램을 로드` 클릭
-4. 이 프로젝트 루트 폴더(`remember`) 선택
+## 실행 기준
 
-## Google Drive 연동 설정
+- 웹앱: 이 폴더를 정적 서버로 서빙한 뒤 `index.html`을 엽니다.
+- 확장프로그램: `chrome://extensions`에서 이 `site_storage` 폴더 자체를 로드합니다.
 
-웹/확장 모두 화면의 `OAuth 설정` 섹션에 같은 Client ID를 넣으면 같은 Drive 파일을 공유합니다.
+## 참고
 
-### 1) Google Cloud에서 OAuth Client ID 생성
-- 유형: **Web application**
-- Scope: `https://www.googleapis.com/auth/drive.appdata`
-
-### 2) Authorized redirect URI 추가
-- 웹 앱 예시: `https://your-domain/remember.html?oauth_callback=1`
-- 로컬 개발 예시: `http://localhost:5500/remember.html?oauth_callback=1`
-- 확장프로그램: `https://<EXTENSION_ID>.chromiumapp.org/`
-  - `<EXTENSION_ID>`는 확장 프로그램 로드 후 `chrome://extensions`에서 확인 가능
-
-### 3) 앱/확장에서 Client ID 저장
-- `OAuth 설정` > `Google OAuth Client ID` 입력 > `Client ID 저장`
-- `Google 연결` 버튼으로 로그인
-
-## 동기화 방식
-
-Drive 파일명: `remember-sync-v2.json`
-
-- `양방향 동기화`: 로컬 + Drive 데이터를 ID/수정시각 기준 병합 후 둘 다 최신으로 맞춤
-- `Drive 저장`: 로컬 데이터를 Drive로 업로드
-- `Drive 불러오기`: Drive 데이터를 로컬로 덮어쓰기
-
-## 데이터 구조(요약)
-
-- `bookmarks[]`: 실제 북마크
-- `tombstones[]`: 삭제 전파용 기록(다른 클라이언트에서 삭제 복원 방지)
-- `updatedAt`: 데이터셋 마지막 수정 시각
-
-삭제도 동기화되도록 tombstone 기반 병합을 사용합니다.
+- OAuth와 Drive 동기화는 `file://` 환경에서 정상 동작하지 않습니다.
+- 라이선스 전문은 [`LICENSE`](LICENSE)를 확인하세요.
