@@ -1,7 +1,19 @@
 "use strict";
 
 const CACHE_NAME = "remember-web-cache-v1";
-const APP_SHELL = ["./", "./index.html", "./app-style.css", "./app.js", "./web-manifest.json"];
+const APP_SHELL = [
+  "./",
+  "./index.html",
+  "./app-style.css",
+  "./app.js",
+  "./icons/site.webmanifest",
+  "./icons/favicon.ico",
+  "./icons/favicon-16x16.png",
+  "./icons/favicon-32x32.png",
+  "./icons/apple-touch-icon.png",
+  "./icons/android-chrome-192x192.png",
+  "./icons/android-chrome-512x512.png"
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

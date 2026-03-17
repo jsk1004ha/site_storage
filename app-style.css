@@ -507,6 +507,67 @@ header {
   cursor: pointer;
 }
 
+.folder-style-panel {
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 0.9rem;
+  padding: 0.7rem;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.folder-style-panel h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.86rem;
+  color: var(--gray-800);
+}
+
+.folder-style-panel label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.76rem;
+  color: #64748b;
+}
+
+.folder-style-panel select,
+.folder-style-panel input {
+  width: 100%;
+  border: 1px solid var(--gray-300);
+  border-radius: 0.65rem;
+  background: #fff;
+  color: var(--gray-700);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.folder-style-inline {
+  margin-top: 0.45rem;
+  display: grid;
+  grid-template-columns: 1fr 78px;
+  gap: 0.45rem;
+}
+
+.folder-style-inline input[type="color"] {
+  padding: 0.2rem;
+  height: 2rem;
+}
+
+.folder-style-actions {
+  margin-top: 0.45rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.folder-style-actions button {
+  border: 1px solid var(--gray-300);
+  background: #fff;
+  border-radius: 0.65rem;
+  padding: 0.42rem 0.5rem;
+  font-size: 0.76rem;
+  color: var(--gray-700);
+  cursor: pointer;
+}
+
 .theme-mode-group {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1045,6 +1106,13 @@ body[data-app-context="extension"] #bookmarkletBtn {
   background: transparent;
   box-shadow: none;
   z-index: 70;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.bottom-cta.is-hidden {
+  opacity: 0;
+  transform: translateY(120%);
+  pointer-events: none;
 }
 
 .bottom-cta button {
@@ -1059,6 +1127,22 @@ body[data-app-context="extension"] #bookmarkletBtn {
   border-radius: 999px;
   box-shadow: 0 12px 24px rgba(0, 100, 255, 0.27);
   cursor: pointer;
+}
+
+.bottom-cta button.fab {
+  min-width: 3.1rem;
+  width: 3.1rem;
+  height: 3.1rem;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 0;
+}
+
+.bottom-cta button.fab::before {
+  content: "+";
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .scroll-top-btn {
@@ -1472,6 +1556,7 @@ body[data-theme="dark"] .search-icon {
 body[data-theme="dark"] .view-toggle,
 body[data-theme="dark"] .drive-panel,
 body[data-theme="dark"] .data-panel,
+body[data-theme="dark"] .folder-style-panel,
 body[data-theme="dark"] .settings-panel,
 body[data-theme="dark"] .appearance-panel,
 body[data-theme="dark"] .bulk-bar,
@@ -1486,6 +1571,9 @@ body[data-theme="dark"] .side-close,
 body[data-theme="dark"] #tagSearchInput,
 body[data-theme="dark"] .facet-toggle button,
 body[data-theme="dark"] .data-actions button,
+body[data-theme="dark"] .folder-style-panel select,
+body[data-theme="dark"] .folder-style-panel input,
+body[data-theme="dark"] .folder-style-actions button,
 body[data-theme="dark"] .scroll-top-btn,
 body[data-theme="dark"] .tag-chip-input {
   background: #111827;
@@ -1503,7 +1591,8 @@ body[data-theme="dark"] .side-head h1 {
 }
 
 body[data-theme="dark"] .side-section h2,
-body[data-theme="dark"] .tag-accordion summary {
+body[data-theme="dark"] .tag-accordion summary,
+body[data-theme="dark"] .folder-style-panel label {
   color: #94a3b8;
 }
 
@@ -1810,6 +1899,12 @@ body[data-app-context="extension"] main {
     min-width: 0;
   }
 
+  .bottom-cta button.fab {
+    width: 3rem;
+    min-width: 3rem;
+    height: 3rem;
+  }
+
   .scroll-top-btn {
     right: 0.75rem;
     bottom: 4.95rem;
@@ -1844,6 +1939,39 @@ body[data-app-context="extension"] main {
   .data-actions {
     grid-template-columns: 1fr;
   }
+
+  .folder-style-inline,
+  .folder-style-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%) translateY(4px);
+  padding: 0.32rem 0.5rem;
+  border-radius: 0.45rem;
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+  z-index: 500;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 @keyframes shimmer {

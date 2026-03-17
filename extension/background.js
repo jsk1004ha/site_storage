@@ -53,6 +53,15 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
+if (chrome.commands?.onCommand) {
+  chrome.commands.onCommand.addListener((command) => {
+    if (command !== "save-current-tab") {
+      return;
+    }
+    saveActiveTabFromCommand().catch(() => {});
+  });
+}
+
 if (chrome.contextMenus?.onClicked) {
   chrome.contextMenus.onClicked.addListener((info, tab) => {
     const menuId = String(info.menuItemId || "");
@@ -81,6 +90,21 @@ if (chrome.contextMenus?.onClicked) {
 ensureBackgroundAlarm();
 ensureContextMenus();
 
+async function saveActiveTabFromCommand() {
+  const tab = await new Promise((resolve) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      resolve(tabs?.[0] || null);
+    });
+  });
+
+  const url = tab?.url || "";
+  if (!url || !normalizeUrl(url)) {
+    return;
+  }
+
+  await addBookmarkFromContext(url, tab?.title || "", tab?.favIconUrl || "");
+}
+
 function ensureBackgroundAlarm() {
   chrome.alarms.create(BG_ALARM_NAME, {
     periodInMinutes: BG_ALARM_PERIOD_MINUTES
@@ -95,13 +119,13 @@ function ensureContextMenus() {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: CONTEXT_MENU_SAVE_PAGE,
-      title: "사이트 저장소에 이 페이지 저장",
+      title: "Remember에 이 페이지 저장",
       contexts: ["page"]
     });
 
     chrome.contextMenus.create({
       id: CONTEXT_MENU_SAVE_LINK,
-      title: "사이트 저장소에 이 링크 저장",
+      title: "이 링크를 Remember에 저장",
       contexts: ["link"]
     });
   });

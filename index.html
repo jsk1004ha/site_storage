@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0064ff" />
   <title>내 사이트 보관함</title>
-  <link rel="manifest" href="web-manifest.json" />
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png" />
+  <link rel="icon" href="icons/favicon.ico" />
+  <link rel="manifest" href="icons/site.webmanifest" />
   <link rel="stylesheet" href="app-style.css" />
 </head>
 <body data-app-context="web">
@@ -50,7 +54,7 @@
     <div class="main-panel">
       <header>
         <div class="controls">
-          <button id="openSidePanelBtn" class="menu-btn" type="button">☰</button>
+          <button id="openSidePanelBtn" class="menu-btn" type="button" data-tooltip="사이드바 열기">☰</button>
           <div class="search-wrap">
             <span class="search-icon" aria-hidden="true">&#128269;</span>
             <input type="text" id="searchInput" placeholder="검색어를 입력해주세요" />
@@ -103,6 +107,20 @@
         <p id="themeModeHint" class="theme-mode-hint">시스템 테마에 맞춰 자동 적용</p>
       </section>
 
+      <section class="folder-style-panel">
+        <h3>폴더 스타일</h3>
+        <label for="folderStyleTarget">대상 폴더</label>
+        <select id="folderStyleTarget"></select>
+        <div class="folder-style-inline">
+          <input id="folderEmojiInput" type="text" maxlength="2" placeholder="이모지" />
+          <input id="folderColorInput" type="color" value="#1d4ed8" />
+        </div>
+        <div class="folder-style-actions">
+          <button id="saveFolderStyleBtn" type="button">저장</button>
+          <button id="clearFolderStyleBtn" type="button">초기화</button>
+        </div>
+      </section>
+
       <section class="data-panel">
         <h3>데이터 관리</h3>
         <div class="data-actions">
@@ -118,11 +136,11 @@
           <h2>Google Drive 동기화</h2>
           <span id="driveStatus" class="drive-status offline">미연결</span>
         </div>
-        <div class="drive-actions">
-          <button id="driveConnectBtn" type="button">Google 연결</button>
-          <button id="driveSyncBtn" type="button" class="primary">양방향 동기화</button>
-          <button id="drivePushBtn" type="button">Drive 저장</button>
-          <button id="drivePullBtn" type="button">Drive 불러오기</button>
+    <div class="drive-actions">
+          <button id="driveConnectBtn" type="button" data-tooltip="Google 계정 연결">Google 연결</button>
+          <button id="driveSyncBtn" type="button" class="primary" data-tooltip="양방향 동기화">양방향 동기화</button>
+          <button id="drivePushBtn" type="button" data-tooltip="로컬 데이터를 Drive에 저장">Drive 저장</button>
+          <button id="drivePullBtn" type="button" data-tooltip="Drive 데이터를 불러오기">Drive 불러오기</button>
         </div>
         <details class="drive-settings">
           <summary>OAuth 설정</summary>
@@ -141,14 +159,14 @@
   </div>
 
   <div class="bottom-utils">
-    <button id="bookmarkletBtn">북마클릿</button>
-    <button id="saveCurrentTabBtn">현재 탭 추가</button>
+    <button id="bookmarkletBtn" data-tooltip="북마클릿 코드 복사">북마클릿</button>
+    <button id="saveCurrentTabBtn" data-tooltip="현재 탭을 바로 저장">현재 탭 추가</button>
   </div>
 
   <div class="bottom-cta">
-    <button id="openSheetBtn">새 사이트 추가하기</button>
+    <button id="openSheetBtn" data-tooltip="새 사이트 추가">새 사이트 추가하기</button>
   </div>
-  <button id="scrollTopBtn" class="scroll-top-btn" type="button" hidden>↑</button>
+  <button id="scrollTopBtn" class="scroll-top-btn" type="button" hidden data-tooltip="맨 위로">↑</button>
 
   <input type="file" id="importFile" accept="application/json" hidden />
   <div id="toastContainer"></div>

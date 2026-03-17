@@ -17,6 +17,7 @@
   const VIEW_MODE_KEY = "rememberViewModeV1";
   const THEME_KEY = "rememberThemeV1";
   const FOLDER_COLLAPSE_KEY = "rememberFolderCollapseV1";
+  const FOLDER_META_KEY = "rememberFolderMetaV1";
   const THEME_MODE_AUTO = "auto";
   const THEME_MODE_LIGHT = "light";
   const THEME_MODE_DARK = "dark";
@@ -82,6 +83,9 @@
   let sheetTagTokens = [];
   let deadLinkCheckScheduled = false;
   let deadLinkCheckInFlight = false;
+  let folderMetaMap = {};
+  let lastScrollY = 0;
+  let ctaHiddenByScroll = false;
 
   const searchInput = byId("searchInput");
   const sortSelect = byId("sortSelect");
@@ -131,6 +135,11 @@
   const metadataHint = byId("metadataHint");
   const folderSuggestions = byId("folderSuggestions");
   const tagSuggestions = byId("tagSuggestions");
+  const folderStyleTarget = byId("folderStyleTarget");
+  const folderEmojiInput = byId("folderEmojiInput");
+  const folderColorInput = byId("folderColorInput");
+  const saveFolderStyleBtn = byId("saveFolderStyleBtn");
+  const clearFolderStyleBtn = byId("clearFolderStyleBtn");
   const cancelBtn1 = byId("cancelBtn1");
   const nextBtn = byId("nextBtn");
   const backBtn = byId("backBtn");
@@ -145,6 +154,7 @@
   const bookmarkletBtn = byId("bookmarkletBtn");
   const saveCurrentTabBtn = byId("saveCurrentTabBtn");
   const scrollTopBtn = byId("scrollTopBtn");
+  const bottomCta = openSheetBtn?.closest(".bottom-cta") || null;
   const settingsOverlay = byId("settingsOverlay");
   const openSettingsBtn = byId("openSettingsBtn");
   const closeSettingsBtn = byId("closeSettingsBtn");
@@ -204,6 +214,27 @@
     scrollTopBtn.hidden = window.scrollY < 420;
   }
 
+  function isCompactDeviceLayout() {
+    if (APP_CONTEXT === "extension") {
+      return true;
+    }
+    return window.matchMedia("(max-width: 640px)").matches;
+  }
+
+  function updateFloatingCtaVisibility() {
+    if (!bottomCta) {
+      return;
+    }
+
+    const compact = isCompactDeviceLayout();
+    const nextHidden = compact && ctaHiddenByScroll;
+    bottomCta.classList.toggle("is-hidden", nextHidden);
+    openSheetBtn?.classList.toggle("fab", compact);
+    if (openSheetBtn) {
+      openSheetBtn.setAttribute("aria-label", "새 사이트 추가");
+    }
+  }
+
   async function initializeApp() {
     registerWebServiceWorker();
     loadUiPreferences();
@@ -224,7 +255,9 @@
     checkIncomingUrl();
     scheduleAutoSync({ immediate: true, fullReconcile: true });
     scheduleDeadLinkCheck();
+    lastScrollY = Math.max(window.scrollY || 0, 0);
     updateScrollTopButtonVisibility();
+    updateFloatingCtaVisibility();
   }
 
   function loadUiPreferences() {
@@ -260,6 +293,17 @@
       }
     } catch (_error) {
       collapsedFolderPaths = new Set();
+    }
+
+    try {
+      const rawMeta = localStorage.getItem(FOLDER_META_KEY);
+      if (rawMeta) {
+        folderMetaMap = normalizeFolderMetaMap(JSON.parse(rawMeta));
+      } else {
+        folderMetaMap = {};
+      }
+    } catch (_error) {
+      folderMetaMap = {};
     }
   }
 
@@ -540,6 +584,63 @@
     renderFolderFilters();
   }
 
+  function normalizeFolderMetaEntry(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    const emoji = String(value.emoji || "").trim().slice(0, 3);
+    const colorRaw = String(value.color || "").trim();
+    const color = /^#[0-9a-fA-F]{6}$/.test(colorRaw) ? colorRaw.toLowerCase() : "";
+    if (!emoji && !color) {
+      return null;
+    }
+    return { emoji, color };
+  }
+
+  function normalizeFolderMetaMap(value) {
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+    const next = {};
+    Object.keys(value).forEach((path) => {
+      const normalizedPath = normalizeFolderName(path);
+      if (!normalizedPath || normalizedPath === DEFAULT_FOLDER_NAME) {
+        return;
+      }
+      const normalizedMeta = normalizeFolderMetaEntry(value[path]);
+      if (!normalizedMeta) {
+        return;
+      }
+      next[normalizedPath] = normalizedMeta;
+    });
+    return next;
+  }
+
+  function saveFolderMetaMap() {
+    try {
+      localStorage.setItem(FOLDER_META_KEY, JSON.stringify(folderMetaMap));
+    } catch (_error) {
+      // ignore preference write errors
+    }
+  }
+
+  function getFolderMeta(path) {
+    const normalizedPath = normalizeFolderName(path);
+    return folderMetaMap[normalizedPath] || null;
+  }
+
+  function withHexAlpha(color, alphaHex) {
+    const safeColor = String(color || "").trim();
+    if (!/^#[0-9a-fA-F]{6}$/.test(safeColor)) {
+      return "";
+    }
+    const safeAlpha = String(alphaHex || "").trim();
+    if (!/^[0-9a-fA-F]{2}$/.test(safeAlpha)) {
+      return safeColor;
+    }
+    return `${safeColor}${safeAlpha}`;
+  }
+
   function handleOAuthCallbackPage() {
     const params = new URLSearchParams(window.location.search);
     const isCallback = params.get("oauth_callback") === "1";
@@ -781,6 +882,44 @@
       showToast("Google 설정을 초기화했습니다");
     });
 
+    saveFolderStyleBtn?.addEventListener("click", () => {
+      const folderPath = normalizeFolderName(folderStyleTarget?.value || "");
+      if (!folderPath || folderPath === DEFAULT_FOLDER_NAME) {
+        showToast("스타일을 적용할 폴더를 선택해주세요");
+        return;
+      }
+
+      const rawEmoji = String(folderEmojiInput?.value || "").trim();
+      const emoji = Array.from(rawEmoji).slice(0, 1).join("");
+      const color = String(folderColorInput?.value || "").trim();
+      const normalized = normalizeFolderMetaEntry({ emoji, color });
+
+      if (!normalized) {
+        delete folderMetaMap[folderPath];
+      } else {
+        folderMetaMap[folderPath] = normalized;
+      }
+
+      saveFolderMetaMap();
+      render();
+      showToast("폴더 스타일을 저장했습니다");
+    });
+
+    clearFolderStyleBtn?.addEventListener("click", () => {
+      const folderPath = normalizeFolderName(folderStyleTarget?.value || "");
+      if (!folderPath || folderPath === DEFAULT_FOLDER_NAME) {
+        return;
+      }
+      delete folderMetaMap[folderPath];
+      saveFolderMetaMap();
+      render();
+      showToast("폴더 스타일을 초기화했습니다");
+    });
+
+    folderStyleTarget?.addEventListener("change", () => {
+      syncFolderStyleEditorFromSelection();
+    });
+
     window.addEventListener("focus", () => {
       scheduleAutoSync({ immediate: true, fullReconcile: true });
     });
@@ -790,10 +929,24 @@
         closeSidePanel();
       }
       updateScrollTopButtonVisibility();
+      updateFloatingCtaVisibility();
     });
 
     window.addEventListener("scroll", () => {
       updateScrollTopButtonVisibility();
+      const currentY = Math.max(window.scrollY || 0, 0);
+      const compact = isCompactDeviceLayout();
+      if (compact) {
+        if (currentY - lastScrollY > 8 && currentY > 120) {
+          ctaHiddenByScroll = true;
+        } else if (lastScrollY - currentY > 8) {
+          ctaHiddenByScroll = false;
+        }
+      } else {
+        ctaHiddenByScroll = false;
+      }
+      lastScrollY = currentY;
+      updateFloatingCtaVisibility();
     });
 
     scrollTopBtn?.addEventListener("click", () => {
@@ -1031,6 +1184,7 @@
     applyViewModeClass();
     updateViewToggleButtons();
     renderFolderFilters();
+    renderFolderStyleControls();
     renderTagFilters();
     renderSuggestions();
     renderBookmarks();
@@ -1145,6 +1299,75 @@
     });
   }
 
+  function collectFolderPathsForUi() {
+    const set = new Set();
+    getBookmarks().forEach((item) => {
+      const folderName = normalizeFolderName(item.folder || "");
+      if (!folderName || folderName === DEFAULT_FOLDER_NAME) {
+        return;
+      }
+      const parts = folderName.split("/");
+      let path = "";
+      parts.forEach((part) => {
+        path = path ? `${path}/${part}` : part;
+        set.add(path);
+      });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "ko"));
+  }
+
+  function renderFolderStyleControls() {
+    if (!folderStyleTarget) {
+      return;
+    }
+
+    const folders = collectFolderPathsForUi();
+    const currentValue =
+      folderStyleTarget.value && folders.includes(folderStyleTarget.value)
+        ? folderStyleTarget.value
+        : folders[0] || "";
+
+    folderStyleTarget.innerHTML = "";
+    if (!folders.length) {
+      const empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = "스타일 지정할 폴더 없음";
+      folderStyleTarget.appendChild(empty);
+      folderStyleTarget.disabled = true;
+      if (folderEmojiInput) {
+        folderEmojiInput.value = "";
+      }
+      if (folderColorInput) {
+        folderColorInput.value = "#1d4ed8";
+      }
+      return;
+    }
+
+    folderStyleTarget.disabled = false;
+    folders.forEach((path) => {
+      const option = document.createElement("option");
+      option.value = path;
+      option.textContent = path;
+      folderStyleTarget.appendChild(option);
+    });
+    folderStyleTarget.value = currentValue;
+    syncFolderStyleEditorFromSelection();
+  }
+
+  function syncFolderStyleEditorFromSelection() {
+    if (!folderStyleTarget) {
+      return;
+    }
+    const selectedPath = normalizeFolderName(folderStyleTarget.value || "");
+    const meta = selectedPath ? getFolderMeta(selectedPath) : null;
+    if (folderEmojiInput) {
+      folderEmojiInput.value = meta?.emoji || "";
+    }
+    if (folderColorInput) {
+      folderColorInput.value = meta?.color || "#1d4ed8";
+    }
+  }
+
   function createFolderChip(label, count, value, level, options = {}) {
     const chip = document.createElement("button");
     chip.type = "button";
@@ -1156,11 +1379,18 @@
       chip.style.setProperty("--indent", `${safeLevel * 0.62}rem`);
     }
 
+    const folderMeta = value ? getFolderMeta(value) : null;
+    if (folderMeta?.color && selectedFolder !== value) {
+      chip.style.backgroundColor = withHexAlpha(folderMeta.color, "1a");
+      chip.style.borderColor = withHexAlpha(folderMeta.color, "66");
+      chip.style.color = folderMeta.color;
+    }
+
     if (options.hasChildren) {
       const toggle = document.createElement("span");
       toggle.className = "folder-toggle";
       toggle.textContent = options.isCollapsed ? "▸" : "▾";
-      toggle.title = options.isCollapsed ? "폴더 펼치기" : "폴더 접기";
+      toggle.setAttribute("data-tooltip", options.isCollapsed ? "폴더 펼치기" : "폴더 접기");
       toggle.onclick = (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1171,7 +1401,7 @@
 
     const text = document.createElement("span");
     text.className = "folder-label";
-    text.textContent = label;
+    text.textContent = `${folderMeta?.emoji || ""}${folderMeta?.emoji ? " " : ""}${label}`;
     chip.appendChild(text);
 
     const countEl = document.createElement("span");
@@ -1340,6 +1570,7 @@
       tagFilter: null,
       folderFilter: null,
       freeTerms: [],
+      hasChosungTerms: false,
       isPinned: null,
       hasReader: false,
       dateAfter: null,
@@ -1412,6 +1643,8 @@
       parsed.freeTerms.push(lower);
     });
 
+    parsed.hasChosungTerms = parsed.freeTerms.some((term) => isChosungOnly(term));
+
     return parsed;
   }
 
@@ -1423,6 +1656,62 @@
     const date = new Date(`${value}T00:00:00`);
     const timestamp = date.getTime();
     return Number.isFinite(timestamp) ? timestamp : null;
+  }
+
+  function isChosungOnly(term) {
+    return /^[ㄱ-ㅎ]+$/u.test(String(term || "").trim());
+  }
+
+  function extractChosungString(text) {
+    const CHOSUNG = [
+      "ㄱ",
+      "ㄲ",
+      "ㄴ",
+      "ㄷ",
+      "ㄸ",
+      "ㄹ",
+      "ㅁ",
+      "ㅂ",
+      "ㅃ",
+      "ㅅ",
+      "ㅆ",
+      "ㅇ",
+      "ㅈ",
+      "ㅉ",
+      "ㅊ",
+      "ㅋ",
+      "ㅌ",
+      "ㅍ",
+      "ㅎ"
+    ];
+    const source = String(text || "");
+    let result = "";
+    for (const char of source) {
+      const code = char.charCodeAt(0);
+      if (code >= 0xac00 && code <= 0xd7a3) {
+        const index = Math.floor((code - 0xac00) / 588);
+        result += CHOSUNG[index] || "";
+      } else if (/^[ㄱ-ㅎ]$/u.test(char)) {
+        result += char;
+      } else {
+        result += " ";
+      }
+    }
+    return result;
+  }
+
+  function matchesSearchTerm(corpusLower, chosungCorpus, term) {
+    const safeTerm = String(term || "").trim().toLowerCase();
+    if (!safeTerm) {
+      return true;
+    }
+    if (corpusLower.includes(safeTerm)) {
+      return true;
+    }
+    if (isChosungOnly(safeTerm) && chosungCorpus) {
+      return chosungCorpus.includes(safeTerm);
+    }
+    return false;
   }
 
   function renderBookmarks() {
@@ -1486,8 +1775,18 @@
       }
 
       if (parsedQuery.freeTerms.length) {
-        const text = `${item.name || ""} ${item.desc || ""} ${folderName} ${(item.tags || []).join(" ")}`.toLowerCase();
-        pass = pass && parsedQuery.freeTerms.every((term) => text.includes(term));
+        const readerText = Array.isArray(item.reader?.blocks) ? item.reader.blocks.join(" ") : "";
+        const searchCorpus = `${item.name || ""} ${item.desc || ""} ${folderName} ${(item.tags || []).join(" ")} ${readerText}`.toLowerCase();
+        const chosungCorpus = parsedQuery.hasChosungTerms
+          ? extractChosungString(
+              `${item.name || ""} ${item.desc || ""} ${folderName} ${(item.tags || []).join(" ")}`
+            )
+          : "";
+        pass =
+          pass &&
+          parsedQuery.freeTerms.every((term) =>
+            matchesSearchTerm(searchCorpus, chosungCorpus, term)
+          );
       }
 
       if (selectedTags.length) {
@@ -1689,6 +1988,7 @@
     const pin = document.createElement("span");
     pin.className = "pin" + (item.pinned ? " pinned" : "");
     pin.textContent = item.pinned ? "★" : "☆";
+    pin.setAttribute("data-tooltip", item.pinned ? "고정 해제" : "상단 고정");
     pin.onclick = () => togglePin(item.id);
     card.appendChild(pin);
 
@@ -1715,8 +2015,14 @@
     const folder = document.createElement("span");
     folder.className = "card-folder";
     const folderName = normalizeFolderName(item.folder || "");
-    folder.textContent = folderName;
+    const folderMeta = getFolderMeta(folderName);
+    folder.textContent = `${folderMeta?.emoji || ""}${folderMeta?.emoji ? " " : ""}${folderName}`;
     folder.title = folderName;
+    if (folderMeta?.color) {
+      folder.style.borderColor = withHexAlpha(folderMeta.color, "88");
+      folder.style.backgroundColor = withHexAlpha(folderMeta.color, "22");
+      folder.style.color = folderMeta.color;
+    }
     titleRow.appendChild(folder);
 
     if (item.linkHealth?.broken) {
@@ -1769,6 +2075,7 @@
     openLink.target = "_blank";
     openLink.rel = "noopener noreferrer";
     openLink.textContent = "열기";
+    openLink.setAttribute("data-tooltip", "원본 페이지 열기");
     openLink.onclick = () => {
       updateVisit(item.id);
     };
@@ -1776,21 +2083,25 @@
 
     const editButton = document.createElement("button");
     editButton.textContent = "수정";
+    editButton.setAttribute("data-tooltip", "편집");
     editButton.onclick = () => openEdit(item.id);
     actions.appendChild(editButton);
 
     const readButton = document.createElement("button");
     readButton.textContent = "읽기";
+    readButton.setAttribute("data-tooltip", "읽기 모드");
     readButton.onclick = () => openReader(item.id);
     actions.appendChild(readButton);
 
     const deleteButton = document.createElement("button");
     deleteButton.textContent = "삭제";
+    deleteButton.setAttribute("data-tooltip", "삭제");
     deleteButton.onclick = () => deleteBookmark(item.id);
     actions.appendChild(deleteButton);
 
     const copyButton = document.createElement("button");
     copyButton.textContent = "복사";
+    copyButton.setAttribute("data-tooltip", "링크 복사");
     copyButton.onclick = () => copyBookmarkLink(item);
     actions.appendChild(copyButton);
 
@@ -2398,6 +2709,7 @@
       return;
     }
 
+    renderFolderStyleControls();
     closeSidePanel();
     settingsOverlay.hidden = false;
     requestAnimationFrame(() => {
