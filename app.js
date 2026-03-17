@@ -16,6 +16,7 @@
   const DATA_KEY = "rememberUnifiedDataV2";
   const VIEW_MODE_KEY = "rememberViewModeV1";
   const THEME_KEY = "rememberThemeV1";
+  const FOLDER_COLLAPSE_KEY = "rememberFolderCollapseV1";
   const THEME_MODE_AUTO = "auto";
   const THEME_MODE_LIGHT = "light";
   const THEME_MODE_DARK = "dark";
@@ -41,6 +42,9 @@
 
   let selectedTags = [];
   let selectedFolder = "";
+  let currentFacetPane = "folders";
+  let tagSearchKeyword = "";
+  let collapsedFolderPaths = new Set();
   let currentSort = "recentAdd";
   let currentViewMode = "magazine";
   let themeMode = THEME_MODE_AUTO;
@@ -76,6 +80,15 @@
   const searchInput = byId("searchInput");
   const sortSelect = byId("sortSelect");
   const folderFilterSelect = byId("folderFilterSelect");
+  const sidePanel = byId("sidePanel");
+  const sideBackdrop = byId("sideBackdrop");
+  const openSidePanelBtn = byId("openSidePanelBtn");
+  const closeSidePanelBtn = byId("closeSidePanelBtn");
+  const showFolderPaneBtn = byId("showFolderPaneBtn");
+  const showTagPaneBtn = byId("showTagPaneBtn");
+  const foldersPane = byId("foldersPane");
+  const tagsPane = byId("tagsPane");
+  const tagSearchInput = byId("tagSearchInput");
   const folderFiltersDiv = byId("folderFilters");
   const viewToggleButtons = Array.from(document.querySelectorAll("[data-view-mode]"));
   const cardsContainer = byId("cardsContainer");
@@ -169,6 +182,7 @@
     bindSystemThemeListener();
     applyViewModeClass();
     updateViewToggleButtons();
+    setFacetPane(currentFacetPane);
     await hydrateDataCache();
     await bootstrapExtensionStorageMirror();
     bindExtensionRuntimeListeners();
@@ -193,15 +207,27 @@
       savedTheme === THEME_MODE_DARK
     ) {
       themeMode = savedTheme;
-      return;
-    }
-
-    if (savedTheme === "true") {
+    } else if (savedTheme === "true") {
       themeMode = THEME_MODE_DARK;
-      return;
+    } else {
+      themeMode = THEME_MODE_AUTO;
     }
 
-    themeMode = THEME_MODE_AUTO;
+    try {
+      const rawCollapsed = localStorage.getItem(FOLDER_COLLAPSE_KEY);
+      if (rawCollapsed) {
+        const parsed = JSON.parse(rawCollapsed);
+        if (Array.isArray(parsed)) {
+          collapsedFolderPaths = new Set(
+            parsed
+              .map((path) => normalizeFolderName(path))
+              .filter((path) => path && path !== DEFAULT_FOLDER_NAME)
+          );
+        }
+      }
+    } catch (_error) {
+      collapsedFolderPaths = new Set();
+    }
   }
 
   function saveViewMode(mode) {
@@ -406,6 +432,81 @@
     extensionRuntimeListenerBound = true;
   }
 
+  function isCompactLayout() {
+    if (APP_CONTEXT === "extension") {
+      return true;
+    }
+    return window.matchMedia("(max-width: 980px)").matches;
+  }
+
+  function openSidePanel() {
+    if (!sidePanel) {
+      return;
+    }
+    document.body.classList.add("side-open");
+    if (sideBackdrop) {
+      sideBackdrop.hidden = false;
+    }
+  }
+
+  function closeSidePanel() {
+    document.body.classList.remove("side-open");
+    if (sideBackdrop) {
+      sideBackdrop.hidden = true;
+    }
+  }
+
+  function closeSidePanelOnCompact() {
+    if (!isCompactLayout()) {
+      return;
+    }
+    closeSidePanel();
+  }
+
+  function setFacetPane(pane) {
+    currentFacetPane = pane === "tags" ? "tags" : "folders";
+
+    if (showFolderPaneBtn) {
+      showFolderPaneBtn.classList.toggle("active", currentFacetPane === "folders");
+    }
+    if (showTagPaneBtn) {
+      showTagPaneBtn.classList.toggle("active", currentFacetPane === "tags");
+    }
+    if (foldersPane) {
+      foldersPane.hidden = currentFacetPane !== "folders";
+    }
+    if (tagsPane) {
+      tagsPane.hidden = currentFacetPane !== "tags";
+    }
+  }
+
+  function saveCollapsedFolderState() {
+    try {
+      localStorage.setItem(
+        FOLDER_COLLAPSE_KEY,
+        JSON.stringify(Array.from(collapsedFolderPaths))
+      );
+    } catch (_error) {
+      // ignore storage write errors for UI preference
+    }
+  }
+
+  function toggleFolderCollapsed(path) {
+    const normalizedPath = normalizeFolderName(path);
+    if (!normalizedPath || normalizedPath === DEFAULT_FOLDER_NAME) {
+      return;
+    }
+
+    if (collapsedFolderPaths.has(normalizedPath)) {
+      collapsedFolderPaths.delete(normalizedPath);
+    } else {
+      collapsedFolderPaths.add(normalizedPath);
+    }
+
+    saveCollapsedFolderState();
+    renderFolderFilters();
+  }
+
   function handleOAuthCallbackPage() {
     const params = new URLSearchParams(window.location.search);
     const isCallback = params.get("oauth_callback") === "1";
@@ -435,6 +536,23 @@
       selectedFolder = this.value;
       renderFolderFilters();
       renderBookmarks();
+    });
+
+    openSidePanelBtn?.addEventListener("click", openSidePanel);
+    closeSidePanelBtn?.addEventListener("click", closeSidePanel);
+    sideBackdrop?.addEventListener("click", closeSidePanel);
+
+    showFolderPaneBtn?.addEventListener("click", () => {
+      setFacetPane("folders");
+    });
+
+    showTagPaneBtn?.addEventListener("click", () => {
+      setFacetPane("tags");
+    });
+
+    tagSearchInput?.addEventListener("input", () => {
+      tagSearchKeyword = (tagSearchInput.value || "").trim().toLowerCase();
+      renderTagFilters();
     });
 
     viewToggleButtons.forEach((button) => {
@@ -534,6 +652,7 @@
       closeSheet();
       closeSettings();
       closeReader();
+      closeSidePanel();
     });
 
     exportBtn?.addEventListener("click", exportData);
@@ -627,6 +746,12 @@
 
     window.addEventListener("focus", () => {
       scheduleAutoSync({ immediate: true, fullReconcile: true });
+    });
+
+    window.addEventListener("resize", () => {
+      if (!isCompactLayout()) {
+        closeSidePanel();
+      }
     });
 
     document.addEventListener("visibilitychange", () => {
@@ -866,20 +991,77 @@
 
   function renderFolderFilters() {
     const bookmarks = getBookmarks();
-    const folderCounts = new Map();
+    const exactFolderCounts = new Map();
     bookmarks.forEach((item) => {
       const folderName = normalizeFolderName(item.folder || "");
-      folderCounts.set(folderName, (folderCounts.get(folderName) || 0) + 1);
+      exactFolderCounts.set(folderName, (exactFolderCounts.get(folderName) || 0) + 1);
     });
 
-    const folders = Array.from(folderCounts.entries()).sort((a, b) =>
-      a[0].localeCompare(b[0], "ko")
-    );
-    updateFolderSuggestions(folders.map(([folderName]) => folderName));
+    const folderCounts = new Map();
+    exactFolderCounts.forEach((count, path) => {
+      const segments = String(path || "")
+        .split("/")
+        .map((part) => part.trim())
+        .filter((part) => part);
+      let prefix = "";
+      segments.forEach((segment) => {
+        prefix = prefix ? `${prefix}/${segment}` : segment;
+        folderCounts.set(prefix, (folderCounts.get(prefix) || 0) + count);
+      });
+    });
+
+    updateFolderSuggestions(Array.from(folderCounts.keys()).sort((a, b) => a.localeCompare(b, "ko")));
 
     if (selectedFolder && !folderCounts.has(selectedFolder)) {
       selectedFolder = "";
     }
+
+    if (selectedFolder) {
+      const parts = selectedFolder.split("/");
+      let parentPath = "";
+      for (let i = 0; i < parts.length - 1; i += 1) {
+        parentPath = parentPath ? `${parentPath}/${parts[i]}` : parts[i];
+        collapsedFolderPaths.delete(parentPath);
+      }
+    }
+
+    const childrenByParent = new Map();
+    Array.from(folderCounts.keys()).forEach((path) => {
+      const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+      if (!childrenByParent.has(parent)) {
+        childrenByParent.set(parent, []);
+      }
+      childrenByParent.get(parent).push(path);
+    });
+
+    childrenByParent.forEach((children) => {
+      children.sort((a, b) => {
+        const aName = a.split("/").pop() || a;
+        const bName = b.split("/").pop() || b;
+        return aName.localeCompare(bName, "ko");
+      });
+    });
+
+    const folderEntries = [];
+    function walkTree(parentPath, level) {
+      const children = childrenByParent.get(parentPath) || [];
+      children.forEach((childPath) => {
+        const hasChildren = (childrenByParent.get(childPath) || []).length > 0;
+        const isCollapsed = hasChildren && collapsedFolderPaths.has(childPath);
+        folderEntries.push({
+          value: childPath,
+          label: childPath.split("/").pop() || childPath,
+          count: folderCounts.get(childPath) || 0,
+          level,
+          hasChildren,
+          isCollapsed
+        });
+        if (!isCollapsed) {
+          walkTree(childPath, level + 1);
+        }
+      });
+    }
+    walkTree("", 0);
 
     if (folderFilterSelect) {
       folderFilterSelect.innerHTML = "";
@@ -889,10 +1071,10 @@
       allOption.textContent = "전체 폴더";
       folderFilterSelect.appendChild(allOption);
 
-      folders.forEach(([folderName]) => {
+      folderEntries.forEach(({ value }) => {
         const option = document.createElement("option");
-        option.value = folderName;
-        option.textContent = folderName;
+        option.value = value;
+        option.textContent = value;
         folderFilterSelect.appendChild(option);
       });
 
@@ -904,19 +1086,40 @@
     }
 
     folderFiltersDiv.innerHTML = "";
-    folderFiltersDiv.appendChild(createFolderChip("전체", bookmarks.length, ""));
+    folderFiltersDiv.appendChild(createFolderChip("전체", bookmarks.length, "", 0));
 
-    folders.forEach(([folderName, count]) => {
-      folderFiltersDiv.appendChild(createFolderChip(folderName, count, folderName));
+    folderEntries.forEach(({ label, count, value, level, hasChildren, isCollapsed }) => {
+      folderFiltersDiv.appendChild(
+        createFolderChip(label, count, value, level, {
+          hasChildren,
+          isCollapsed
+        })
+      );
     });
   }
 
-  function createFolderChip(label, count, value) {
+  function createFolderChip(label, count, value, level, options = {}) {
     const chip = document.createElement("button");
     chip.type = "button";
-    chip.className = "folder-chip" + (selectedFolder === value ? " active" : "");
+    chip.className = `${value ? "folder-chip folder-node" : "folder-chip"}${selectedFolder === value ? " active" : ""}`;
     chip.setAttribute("aria-pressed", selectedFolder === value ? "true" : "false");
     chip.dataset.folderValue = value;
+    if (value) {
+      chip.style.setProperty("--level", String(Math.max(0, level || 0)));
+    }
+
+    if (options.hasChildren) {
+      const toggle = document.createElement("span");
+      toggle.className = "folder-toggle";
+      toggle.textContent = options.isCollapsed ? "▸" : "▾";
+      toggle.title = options.isCollapsed ? "폴더 펼치기" : "폴더 접기";
+      toggle.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleFolderCollapsed(value);
+      };
+      chip.appendChild(toggle);
+    }
 
     const text = document.createElement("span");
     text.textContent = label;
@@ -937,6 +1140,7 @@
       }
       renderFolderFilters();
       renderBookmarks();
+      closeSidePanelOnCompact();
     };
 
     chip.addEventListener("dragover", (event) => {
@@ -980,11 +1184,26 @@
 
     const tags = Object.keys(tagCounts).sort((a, b) => a.localeCompare(b));
     updateTagSuggestions(tags);
-    tags.forEach((tag) => {
+    const visibleTags = tagSearchKeyword
+      ? tags.filter((tag) => tag.toLowerCase().includes(tagSearchKeyword))
+      : tags;
+
+    if (!visibleTags.length) {
+      const empty = document.createElement("span");
+      empty.className = "tag-empty";
+      empty.textContent = "일치하는 태그가 없습니다";
+      tagFiltersDiv.appendChild(empty);
+      return;
+    }
+
+    visibleTags.forEach((tag) => {
       const chip = document.createElement("span");
       chip.className = "tag-chip" + (selectedTags.includes(tag) ? " selected" : "");
       chip.textContent = tag;
-      chip.onclick = () => toggleTagFilter(tag);
+      chip.onclick = () => {
+        toggleTagFilter(tag);
+        closeSidePanelOnCompact();
+      };
       tagFiltersDiv.appendChild(chip);
     });
   }
@@ -992,7 +1211,33 @@
   function renderSuggestions() {
     suggestionsDiv.innerHTML = "";
 
-    appendSuggestion("최근 본", () => {
+    appendSuggestion("전체", () => {
+      smartFilter = "";
+      searchInput.value = "";
+      selectedTags = [];
+      selectedFolder = "";
+      sortSelect.value = "recentAdd";
+      currentSort = "recentAdd";
+      renderBookmarks();
+      renderTagFilters();
+      renderFolderFilters();
+      closeSidePanelOnCompact();
+    });
+
+    appendSuggestion("최근 추가", () => {
+      smartFilter = "";
+      searchInput.value = "";
+      selectedTags = [];
+      selectedFolder = "";
+      sortSelect.value = "recentAdd";
+      currentSort = "recentAdd";
+      renderBookmarks();
+      renderTagFilters();
+      renderFolderFilters();
+      closeSidePanelOnCompact();
+    });
+
+    appendSuggestion("최근 방문", () => {
       smartFilter = "";
       searchInput.value = "";
       selectedTags = [];
@@ -1002,9 +1247,10 @@
       renderBookmarks();
       renderTagFilters();
       renderFolderFilters();
+      closeSidePanelOnCompact();
     });
 
-    appendSuggestion("자주 본", () => {
+    appendSuggestion("자주 방문", () => {
       smartFilter = "";
       searchInput.value = "";
       selectedTags = [];
@@ -1014,57 +1260,8 @@
       renderBookmarks();
       renderTagFilters();
       renderFolderFilters();
+      closeSidePanelOnCompact();
     });
-
-    const tagCounts = {};
-    getBookmarks().forEach((item) => {
-      (item.tags || []).forEach((tag) => {
-        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-      });
-    });
-
-    Object.keys(tagCounts)
-      .sort((a, b) => tagCounts[b] - tagCounts[a])
-      .slice(0, 3)
-      .forEach((tag) => {
-        appendSuggestion("#" + tag, () => {
-          smartFilter = "";
-          searchInput.value = "";
-          selectedTags = [tag];
-          selectedFolder = "";
-          sortSelect.value = "recentAdd";
-          currentSort = "recentAdd";
-          renderBookmarks();
-          renderTagFilters();
-          renderFolderFilters();
-        });
-      });
-
-    const domainCounts = {};
-    getBookmarks().forEach((item) => {
-      const domain = item.domain || "";
-      domainCounts[domain] = (domainCounts[domain] || 0) + 1;
-    });
-
-    Object.keys(domainCounts)
-      .sort((a, b) => domainCounts[b] - domainCounts[a])
-      .slice(0, 2)
-      .forEach((domain) => {
-        if (!domain) {
-          return;
-        }
-        appendSuggestion(domain, () => {
-          smartFilter = "";
-          searchInput.value = "site:" + domain;
-          selectedTags = [];
-          selectedFolder = "";
-          sortSelect.value = "recentAdd";
-          currentSort = "recentAdd";
-          renderBookmarks();
-          renderTagFilters();
-          renderFolderFilters();
-        });
-      });
 
     appendSuggestion("한달 이상 안 본", () => {
       smartFilter = "stale30";
@@ -1076,6 +1273,7 @@
       renderBookmarks();
       renderTagFilters();
       renderFolderFilters();
+      closeSidePanelOnCompact();
     });
   }
 
@@ -1138,7 +1336,9 @@
       }
 
       if (selectedFolder) {
-        pass = pass && folderName === selectedFolder;
+        pass =
+          pass &&
+          (folderName === selectedFolder || folderName.startsWith(`${selectedFolder}/`));
       }
 
       return pass;
@@ -1343,7 +1543,7 @@
     const titleRow = document.createElement("div");
     titleRow.className = "card-title-row";
 
-    const favicon = createFaviconImage(item.faviconUrl);
+    const favicon = createFaviconImage(item.faviconUrl, item.url, item.domain);
     titleRow.appendChild(favicon);
 
     const title = document.createElement("div");
@@ -1429,27 +1629,82 @@
     const media = document.createElement("div");
     media.className = "card-media";
 
+    let fallbackCommitted = false;
+    const appendLetterFallback = () => {
+      if (fallbackCommitted) {
+        return;
+      }
+      fallbackCommitted = true;
+      media.classList.remove("has-media-favicon");
+      const fallback = document.createElement("div");
+      fallback.className = "fallback";
+      fallback.textContent = (item.domain || item.name || "?").slice(0, 1).toUpperCase();
+      media.appendChild(fallback);
+    };
+
+    const appendFaviconFallback = () => {
+      if (fallbackCommitted) {
+        return;
+      }
+      const faviconUrl = item.faviconUrl || buildFallbackFaviconUrl(item.url, item.domain);
+      if (!faviconUrl) {
+        appendLetterFallback();
+        return;
+      }
+      media.classList.add("has-media-favicon");
+      const favicon = document.createElement("img");
+      favicon.className = "media-favicon";
+      favicon.src = faviconUrl;
+      favicon.alt = "";
+      favicon.loading = "lazy";
+      favicon.onerror = () => {
+        favicon.remove();
+        appendLetterFallback();
+      };
+      media.appendChild(favicon);
+      fallbackCommitted = true;
+    };
+
     if (item.thumbUrl) {
       const image = document.createElement("img");
       image.src = item.thumbUrl;
       image.alt = `${item.name || item.url} 썸네일`;
+      image.loading = "lazy";
+      image.onerror = () => {
+        image.remove();
+        appendFaviconFallback();
+      };
       media.appendChild(image);
       return media;
     }
 
-    const fallback = document.createElement("div");
-    fallback.className = "fallback";
-    fallback.textContent = (item.domain || item.name || "?").slice(0, 1).toUpperCase();
-    media.appendChild(fallback);
+    appendFaviconFallback();
+    if (!fallbackCommitted) {
+      appendLetterFallback();
+    }
     return media;
   }
 
-  function createFaviconImage(faviconUrl) {
+  function buildFallbackFaviconUrl(url, domain) {
+    const normalizedDomain = String(domain || extractDomain(url) || "").trim();
+    if (!normalizedDomain) {
+      return "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+    }
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(normalizedDomain)}&sz=64`;
+  }
+
+  function createFaviconImage(faviconUrl, url, domain) {
     const favicon = document.createElement("img");
     favicon.className = "card-favicon";
-    favicon.src = faviconUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+    favicon.src = faviconUrl || buildFallbackFaviconUrl(url, domain);
     favicon.alt = "";
     favicon.loading = "lazy";
+    favicon.onerror = () => {
+      const fallback = buildFallbackFaviconUrl(url, domain);
+      if (favicon.src !== fallback) {
+        favicon.src = fallback;
+      }
+    };
     return favicon;
   }
 
@@ -1867,6 +2122,7 @@
     smartFilter = "";
     renderBookmarks();
     renderTagFilters();
+    closeSidePanelOnCompact();
   }
 
   function openSettings() {
@@ -1874,6 +2130,7 @@
       return;
     }
 
+    closeSidePanel();
     settingsOverlay.hidden = false;
     requestAnimationFrame(() => {
       settingsOverlay.classList.add("open");
@@ -2114,7 +2371,7 @@
       ]),
       url
     );
-    const favicon = normalizeAssetUrl(
+    const faviconFromMeta = normalizeAssetUrl(
       pickFirstMeta(doc, [
         ['link[rel="icon"]', "href"],
         ['link[rel="shortcut icon"]', "href"],
@@ -2122,6 +2379,7 @@
       ]),
       url
     );
+    const favicon = faviconFromMeta || buildFallbackFaviconUrl(url, extractDomain(url));
 
     return {
       title,
@@ -2645,8 +2903,15 @@
   }
 
   function normalizeFolderName(value) {
-    const folder = String(value || "").trim();
-    return folder || DEFAULT_FOLDER_NAME;
+    const folder = String(value || "").trim().replace(/\\/g, "/");
+    if (!folder) {
+      return DEFAULT_FOLDER_NAME;
+    }
+    const segments = folder
+      .split("/")
+      .map((part) => part.trim())
+      .filter((part) => part);
+    return segments.join("/") || DEFAULT_FOLDER_NAME;
   }
 
   function generateId() {

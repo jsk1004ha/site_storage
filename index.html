@@ -7,32 +7,84 @@
   <link rel="stylesheet" href="app-style.css" />
 </head>
 <body data-app-context="web">
-  <header>
-    <h1>기억해둘 사이트 모음</h1>
-    <div class="controls">
-      <input type="text" id="searchInput" placeholder="검색어를 입력해주세요" />
-      <select id="sortSelect">
-        <option value="recentAdd">최근 추가</option>
-        <option value="recentVisit">최근 방문</option>
-        <option value="frequent">자주 방문</option>
-      </select>
-      <select id="folderFilterSelect" hidden>
-        <option value="">전체 폴더</option>
-      </select>
-      <div class="view-toggle" id="viewToggle">
-        <button type="button" data-view-mode="grid">그리드</button>
-        <button type="button" data-view-mode="list">리스트</button>
-        <button type="button" data-view-mode="magazine" class="active">매거진</button>
+  <div class="app-shell">
+    <aside id="sidePanel" class="side-panel">
+      <div class="side-head">
+        <h1>기억해둘 사이트 모음</h1>
+        <button id="closeSidePanelBtn" class="side-close" type="button">닫기</button>
       </div>
+
+      <section class="side-section">
+        <h2>기본/스마트 뷰</h2>
+        <div id="suggestions"></div>
+      </section>
+
+      <section class="side-section">
+        <div class="facet-toggle" id="facetToggle">
+          <button id="showFolderPaneBtn" type="button" data-facet="folders" class="active">폴더</button>
+          <button id="showTagPaneBtn" type="button" data-facet="tags">태그</button>
+        </div>
+
+        <div id="foldersPane" class="facet-pane">
+          <div id="folderFilters"></div>
+        </div>
+
+        <div id="tagsPane" class="facet-pane" hidden>
+          <details id="tagAccordion" class="tag-accordion">
+            <summary>태그 목록</summary>
+            <input id="tagSearchInput" type="text" placeholder="태그 검색" />
+            <div id="tagFilters"></div>
+          </details>
+        </div>
+      </section>
+
+      <div class="side-footer">
+        <button id="openSettingsBtn" class="settings-side-btn" type="button">설정</button>
+      </div>
+    </aside>
+
+    <div id="sideBackdrop" class="side-backdrop" hidden></div>
+
+    <div class="main-panel">
+      <header>
+        <div class="controls">
+          <button id="openSidePanelBtn" class="menu-btn" type="button">☰</button>
+          <div class="search-wrap">
+            <span class="search-icon" aria-hidden="true">&#128269;</span>
+            <input type="text" id="searchInput" placeholder="검색어를 입력해주세요" />
+          </div>
+          <select id="sortSelect" hidden>
+            <option value="recentAdd">최근 추가</option>
+            <option value="recentVisit">최근 방문</option>
+            <option value="frequent">자주 방문</option>
+          </select>
+          <select id="folderFilterSelect" hidden>
+            <option value="">전체 폴더</option>
+          </select>
+          <div class="view-toggle" id="viewToggle">
+            <button type="button" data-view-mode="grid">그리드</button>
+            <button type="button" data-view-mode="list">리스트</button>
+            <button type="button" data-view-mode="magazine" class="active">매거진</button>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <section id="bulkBar" class="bulk-bar" hidden>
+          <span id="bulkCount">0개 선택됨</span>
+          <button id="bulkToggleVisibleBtn" type="button">현재 목록 전체 선택</button>
+          <button id="bulkMoveFolderBtn" type="button">폴더 이동</button>
+          <button id="bulkAddTagBtn" type="button">태그 추가</button>
+          <button id="bulkRemoveTagBtn" type="button">태그 제거</button>
+          <button id="bulkDeleteBtn" type="button" class="danger">선택 삭제</button>
+          <button id="bulkClearBtn" type="button">선택 해제</button>
+        </section>
+        <section id="cardsContainer"></section>
+      </main>
     </div>
-    <div id="suggestions"></div>
-    <div id="folderFilters"></div>
-    <div id="tagFilters"></div>
-  </header>
+  </div>
 
-  <button id="openSettingsBtn" class="settings-fab" type="button">설정</button>
-
-  <div class="settings-overlay" id="settingsOverlay" hidden>
+    <div class="settings-overlay" id="settingsOverlay" hidden>
     <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
       <div class="settings-head">
         <h2 id="settingsTitle">설정</h2>
@@ -75,19 +127,6 @@
       </section>
     </section>
   </div>
-
-  <main>
-    <section id="bulkBar" class="bulk-bar" hidden>
-      <span id="bulkCount">0개 선택됨</span>
-      <button id="bulkToggleVisibleBtn" type="button">현재 목록 전체 선택</button>
-      <button id="bulkMoveFolderBtn" type="button">폴더 이동</button>
-      <button id="bulkAddTagBtn" type="button">태그 추가</button>
-      <button id="bulkRemoveTagBtn" type="button">태그 제거</button>
-      <button id="bulkDeleteBtn" type="button" class="danger">선택 삭제</button>
-      <button id="bulkClearBtn" type="button">선택 해제</button>
-    </section>
-    <section id="cardsContainer"></section>
-  </main>
 
   <div class="bottom-utils">
     <button id="exportBtn">백업</button>
