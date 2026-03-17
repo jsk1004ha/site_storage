@@ -19,17 +19,21 @@ const BG_ALARM_PERIOD_MINUTES = 5;
 
 const BG_SYNC_UPDATED_MESSAGE = "remember-bg-sync-updated";
 const BG_SYNC_WARNING_MESSAGE = "remember-bg-sync-warning";
+const CONTEXT_MENU_SAVE_PAGE = "remember-save-page";
+const CONTEXT_MENU_SAVE_LINK = "remember-save-link";
 
 let syncInFlight = false;
 let dbPromise = null;
 
 chrome.runtime.onInstalled.addListener(() => {
   ensureBackgroundAlarm();
+  ensureContextMenus();
   runBackgroundSyncSafely();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   ensureBackgroundAlarm();
+  ensureContextMenus();
   runBackgroundSyncSafely();
 });
 
@@ -49,12 +53,113 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
+if (chrome.contextMenus?.onClicked) {
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    const menuId = String(info.menuItemId || "");
+    if (menuId !== CONTEXT_MENU_SAVE_PAGE && menuId !== CONTEXT_MENU_SAVE_LINK) {
+      return;
+    }
+
+    const candidateUrl =
+      menuId === CONTEXT_MENU_SAVE_LINK
+        ? info.linkUrl || ""
+        : info.pageUrl || tab?.url || "";
+
+    if (!candidateUrl) {
+      return;
+    }
+
+    const titleCandidate =
+      menuId === CONTEXT_MENU_SAVE_LINK
+        ? info.selectionText || info.linkText || tab?.title || ""
+        : tab?.title || "";
+
+    addBookmarkFromContext(candidateUrl, titleCandidate, tab?.favIconUrl || "").catch(() => {});
+  });
+}
+
 ensureBackgroundAlarm();
+ensureContextMenus();
 
 function ensureBackgroundAlarm() {
   chrome.alarms.create(BG_ALARM_NAME, {
     periodInMinutes: BG_ALARM_PERIOD_MINUTES
   });
+}
+
+function ensureContextMenus() {
+  if (!chrome.contextMenus) {
+    return;
+  }
+
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: CONTEXT_MENU_SAVE_PAGE,
+      title: "사이트 저장소에 이 페이지 저장",
+      contexts: ["page"]
+    });
+
+    chrome.contextMenus.create({
+      id: CONTEXT_MENU_SAVE_LINK,
+      title: "사이트 저장소에 이 링크 저장",
+      contexts: ["link"]
+    });
+  });
+}
+
+async function addBookmarkFromContext(url, title, faviconUrl) {
+  const normalizedUrl = normalizeUrl(url);
+  if (!normalizedUrl) {
+    return;
+  }
+
+  const data = normalizeData((await readDataFromIndexedDb()) || createEmptyData());
+  const now = Date.now();
+  const index = data.bookmarks.findIndex((item) => item.url === normalizedUrl);
+
+  if (index >= 0) {
+    data.bookmarks[index] = normalizeBookmark({
+      ...data.bookmarks[index],
+      updatedAt: now
+    });
+    data.updatedAt = now;
+    await writeDataToIndexedDb(data);
+    broadcast({ type: BG_SYNC_UPDATED_MESSAGE });
+    broadcast({
+      type: BG_SYNC_WARNING_MESSAGE,
+      message: "이미 저장된 사이트입니다."
+    });
+    runBackgroundSyncSafely();
+    return;
+  }
+
+  const name = String(title || "").trim() || extractDomain(normalizedUrl) || normalizedUrl;
+  const newItem = normalizeBookmark({
+    id: `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`,
+    url: normalizedUrl,
+    name,
+    folder: "기본",
+    thumbUrl: "",
+    faviconUrl: normalizeAssetUrl(faviconUrl || "", normalizedUrl),
+    tags: [],
+    desc: "",
+    createdAt: now,
+    updatedAt: now,
+    pinned: false,
+    visitCount: 0,
+    visitedAt: null,
+    domain: extractDomain(normalizedUrl)
+  });
+
+  data.bookmarks.push(newItem);
+  data.updatedAt = now;
+  await writeDataToIndexedDb(data);
+  broadcast({ type: BG_SYNC_UPDATED_MESSAGE });
+  broadcast({
+    type: BG_SYNC_WARNING_MESSAGE,
+    message: "우클릭 메뉴로 사이트를 저장했습니다."
+  });
+  runBackgroundSyncSafely();
 }
 
 async function runBackgroundSyncSafely() {
@@ -302,6 +407,22 @@ function parseTags(input) {
     .filter((tag, index, list) => tag && list.indexOf(tag) === index);
 }
 
+function normalizeLinkHealth(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const checkedAt = toSafeNumber(value.checkedAt, 0);
+  const status = toSafeNumber(value.status, 0);
+  if (!checkedAt) {
+    return null;
+  }
+  return {
+    checkedAt,
+    status: status > 0 ? status : 0,
+    broken: !!value.broken
+  };
+}
+
 function normalizeBookmark(value) {
   const item = value && typeof value === "object" ? value : {};
   const normalizedUrl = normalizeUrl(String(item.url || "").trim());
@@ -323,7 +444,8 @@ function normalizeBookmark(value) {
     visitCount: toSafeNumber(item.visitCount, 0),
     visitedAt: item.visitedAt ? toSafeNumber(item.visitedAt, null) : null,
     domain: extractDomain(normalizedUrl || ""),
-    reader: item.reader && typeof item.reader === "object" ? item.reader : null
+    reader: item.reader && typeof item.reader === "object" ? item.reader : null,
+    linkHealth: normalizeLinkHealth(item.linkHealth)
   };
 }
 

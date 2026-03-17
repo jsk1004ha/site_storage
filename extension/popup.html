@@ -101,6 +101,16 @@
         <p id="themeModeHint" class="theme-mode-hint">시스템 테마에 맞춰 자동 적용</p>
       </section>
 
+      <section class="data-panel">
+        <h3>데이터 관리</h3>
+        <div class="data-actions">
+          <button id="exportBtn" type="button">백업 다운로드</button>
+          <button id="importBtn" type="button">백업 복구</button>
+          <button id="checkDeadLinksBtn" type="button">죽은 링크 검사</button>
+          <button id="deleteBrokenLinksBtn" type="button">죽은 링크 일괄 삭제</button>
+        </div>
+      </section>
+
       <section class="drive-panel">
         <div class="drive-head">
           <h2>Google Drive 동기화</h2>
@@ -129,8 +139,6 @@
   </div>
 
   <div class="bottom-utils">
-    <button id="exportBtn">백업</button>
-    <button id="importBtn">복구</button>
     <button id="bookmarkletBtn">북마클릿</button>
     <button id="saveCurrentTabBtn">현재 탭 추가</button>
   </div>
@@ -138,6 +146,7 @@
   <div class="bottom-cta">
     <button id="openSheetBtn">새 사이트 추가하기</button>
   </div>
+  <button id="scrollTopBtn" class="scroll-top-btn" type="button" hidden>↑</button>
 
   <input type="file" id="importFile" accept="application/json" hidden />
   <div id="toastContainer"></div>
@@ -177,6 +186,14 @@
             <p id="metadataDescription"></p>
           </div>
         </div>
+        <div class="metadata-skeleton" id="metadataSkeleton" hidden>
+          <div class="skeleton-thumb"></div>
+          <div class="skeleton-lines">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
         <p class="metadata-hint" id="metadataHint">URL 입력 시 Open Graph 메타데이터를 자동 추출합니다.</p>
         <label for="siteName">사이트 이름</label>
         <input type="text" id="siteName" placeholder="사이트 이름" />
@@ -187,7 +204,10 @@
         <label for="siteFaviconUrl">파비콘 URL</label>
         <input type="url" id="siteFaviconUrl" placeholder="자동 추출" />
         <label for="siteTags">태그 (띄어쓰기 또는 쉼표로 구분)</label>
-        <input type="text" id="siteTags" placeholder="예: 개발 디자인" list="tagSuggestions" />
+        <div class="tag-chip-input" id="siteTagsChipBox">
+          <input type="text" id="siteTagsEditor" placeholder="태그 입력 후 Enter/Space" />
+        </div>
+        <input type="text" id="siteTags" hidden />
         <label for="siteDesc">메모 (선택)</label>
         <textarea id="siteDesc" rows="3" placeholder="메모"></textarea>
         <div class="sheet-buttons">

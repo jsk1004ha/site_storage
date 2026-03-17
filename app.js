@@ -36,6 +36,9 @@
   const RENDER_BATCH_SIZE = 30;
   const BG_SYNC_UPDATED_MESSAGE = "remember-bg-sync-updated";
   const BG_SYNC_WARNING_MESSAGE = "remember-bg-sync-warning";
+  const LINK_CHECK_MIN_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+  const LINK_CHECK_RECHECK_MS = 7 * 24 * 60 * 60 * 1000;
+  const LINK_CHECK_BATCH_SIZE = 4;
 
   const DRIVE_FILE_NAME = "remember-sync-v2.json";
   const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
@@ -76,6 +79,9 @@
   let lastStoragePersistErrorAt = 0;
   let draggingBookmarkIds = [];
   let extensionRuntimeListenerBound = false;
+  let sheetTagTokens = [];
+  let deadLinkCheckScheduled = false;
+  let deadLinkCheckInFlight = false;
 
   const searchInput = byId("searchInput");
   const sortSelect = byId("sortSelect");
@@ -112,6 +118,8 @@
   const siteFolderInput = byId("siteFolder");
   const siteThumbUrlInput = byId("siteThumbUrl");
   const siteFaviconUrlInput = byId("siteFaviconUrl");
+  const siteTagsChipBox = byId("siteTagsChipBox");
+  const siteTagsEditor = byId("siteTagsEditor");
   const siteTagsInput = byId("siteTags");
   const siteDescInput = byId("siteDesc");
   const metadataPreview = byId("metadataPreview");
@@ -119,6 +127,7 @@
   const metadataFavicon = byId("metadataFavicon");
   const metadataDomain = byId("metadataDomain");
   const metadataDescription = byId("metadataDescription");
+  const metadataSkeleton = byId("metadataSkeleton");
   const metadataHint = byId("metadataHint");
   const folderSuggestions = byId("folderSuggestions");
   const tagSuggestions = byId("tagSuggestions");
@@ -130,9 +139,12 @@
   const toastContainer = byId("toastContainer");
   const exportBtn = byId("exportBtn");
   const importBtn = byId("importBtn");
+  const checkDeadLinksBtn = byId("checkDeadLinksBtn");
+  const deleteBrokenLinksBtn = byId("deleteBrokenLinksBtn");
   const importFileInput = byId("importFile");
   const bookmarkletBtn = byId("bookmarkletBtn");
   const saveCurrentTabBtn = byId("saveCurrentTabBtn");
+  const scrollTopBtn = byId("scrollTopBtn");
   const settingsOverlay = byId("settingsOverlay");
   const openSettingsBtn = byId("openSettingsBtn");
   const closeSettingsBtn = byId("closeSettingsBtn");
@@ -175,7 +187,25 @@
     return document.getElementById(id);
   }
 
+  function registerWebServiceWorker() {
+    if (IS_EXTENSION_CONTEXT || !("serviceWorker" in navigator)) {
+      return;
+    }
+
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    });
+  }
+
+  function updateScrollTopButtonVisibility() {
+    if (!scrollTopBtn) {
+      return;
+    }
+    scrollTopBtn.hidden = window.scrollY < 420;
+  }
+
   async function initializeApp() {
+    registerWebServiceWorker();
     loadUiPreferences();
     applyTheme();
     updateThemeModeControls();
@@ -189,9 +219,12 @@
     bindUiEvents();
     loadSavedGoogleConfig();
     refreshDriveStatus();
+    initializeTagChipInput();
     render();
     checkIncomingUrl();
     scheduleAutoSync({ immediate: true, fullReconcile: true });
+    scheduleDeadLinkCheck();
+    updateScrollTopButtonVisibility();
   }
 
   function loadUiPreferences() {
@@ -658,6 +691,10 @@
     exportBtn?.addEventListener("click", exportData);
     importBtn?.addEventListener("click", () => importFileInput?.click());
     importFileInput?.addEventListener("change", importData);
+    checkDeadLinksBtn?.addEventListener("click", () => {
+      runDeadLinkCheckBatch({ force: true, full: true }).catch(() => {});
+    });
+    deleteBrokenLinksBtn?.addEventListener("click", deleteBrokenLinks);
 
     bookmarkletBtn?.addEventListener("click", copyBookmarkletCode);
 
@@ -752,11 +789,21 @@
       if (!isCompactLayout()) {
         closeSidePanel();
       }
+      updateScrollTopButtonVisibility();
+    });
+
+    window.addEventListener("scroll", () => {
+      updateScrollTopButtonVisibility();
+    });
+
+    scrollTopBtn?.addEventListener("click", () => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
 
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
         scheduleAutoSync({ immediate: true, fullReconcile: true });
+        scheduleDeadLinkCheck();
       }
     });
   }
@@ -1105,7 +1152,8 @@
     chip.setAttribute("aria-pressed", selectedFolder === value ? "true" : "false");
     chip.dataset.folderValue = value;
     if (value) {
-      chip.style.setProperty("--level", String(Math.max(0, level || 0)));
+      const safeLevel = Math.max(0, Math.min(6, level || 0));
+      chip.style.setProperty("--indent", `${safeLevel * 0.62}rem`);
     }
 
     if (options.hasChildren) {
@@ -1122,6 +1170,7 @@
     }
 
     const text = document.createElement("span");
+    text.className = "folder-label";
     text.textContent = label;
     chip.appendChild(text);
 
@@ -1285,22 +1334,102 @@
     suggestionsDiv.appendChild(el);
   }
 
+  function parseAdvancedSearchQuery(rawQuery) {
+    const parsed = {
+      domainFilter: null,
+      tagFilter: null,
+      folderFilter: null,
+      freeTerms: [],
+      isPinned: null,
+      hasReader: false,
+      dateAfter: null,
+      dateBefore: null,
+      isBroken: null
+    };
+
+    const tokens = String(rawQuery || "")
+      .trim()
+      .split(/\s+/)
+      .filter((token) => token);
+
+    tokens.forEach((token) => {
+      const lower = token.toLowerCase();
+      if (lower.startsWith("site:")) {
+        parsed.domainFilter = lower.slice(5).trim() || null;
+        return;
+      }
+      if (lower.startsWith("folder:")) {
+        parsed.folderFilter = lower.slice(7).trim() || null;
+        return;
+      }
+      if (lower.startsWith("#")) {
+        parsed.tagFilter = lower.slice(1).trim() || null;
+        return;
+      }
+      if (lower.startsWith("is:")) {
+        const value = lower.slice(3).trim();
+        if (value === "pinned") {
+          parsed.isPinned = true;
+          return;
+        }
+        if (value === "unpinned") {
+          parsed.isPinned = false;
+          return;
+        }
+        if (value === "broken") {
+          parsed.isBroken = true;
+          return;
+        }
+        if (value === "alive") {
+          parsed.isBroken = false;
+          return;
+        }
+      }
+      if (lower.startsWith("has:")) {
+        const value = lower.slice(4).trim();
+        if (value === "reader") {
+          parsed.hasReader = true;
+          return;
+        }
+      }
+      if (lower.startsWith("date:")) {
+        const dateExpression = lower.slice(5).trim();
+        if (dateExpression.startsWith(">")) {
+          const timestamp = parseDateOperand(dateExpression.slice(1));
+          if (timestamp !== null) {
+            parsed.dateAfter = timestamp;
+            return;
+          }
+        } else if (dateExpression.startsWith("<")) {
+          const timestamp = parseDateOperand(dateExpression.slice(1));
+          if (timestamp !== null) {
+            parsed.dateBefore = timestamp;
+            return;
+          }
+        }
+      }
+
+      parsed.freeTerms.push(lower);
+    });
+
+    return parsed;
+  }
+
+  function parseDateOperand(input) {
+    const value = String(input || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return null;
+    }
+    const date = new Date(`${value}T00:00:00`);
+    const timestamp = date.getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+
   function renderBookmarks() {
     pruneSelectedBookmarkIds();
     const all = getBookmarks().slice();
     const query = searchInput.value.trim();
-
-    let domainFilter = null;
-    let tagFilterQuery = null;
-    let folderFilterQuery = null;
-
-    if (query.startsWith("site:")) {
-      domainFilter = query.slice(5).trim().toLowerCase();
-    } else if (query.startsWith("#")) {
-      tagFilterQuery = query.slice(1).trim().toLowerCase();
-    } else if (query.startsWith("folder:")) {
-      folderFilterQuery = query.slice(7).trim().toLowerCase();
-    }
+    const parsedQuery = parseAdvancedSearchQuery(query);
 
     const filtered = all.filter((item) => {
       let pass = true;
@@ -1313,22 +1442,52 @@
         }
       }
 
-      if (domainFilter) {
-        pass = pass && (item.domain || "").toLowerCase().includes(domainFilter);
+      if (parsedQuery.domainFilter) {
+        pass = pass && (item.domain || "").toLowerCase().includes(parsedQuery.domainFilter);
       }
 
-      if (tagFilterQuery) {
-        pass = pass && (item.tags || []).some((tag) => tag.toLowerCase().includes(tagFilterQuery));
+      if (parsedQuery.tagFilter) {
+        pass =
+          pass &&
+          (item.tags || []).some((tag) => tag.toLowerCase().includes(parsedQuery.tagFilter));
       }
 
-      if (folderFilterQuery) {
-        pass = pass && folderName.toLowerCase().includes(folderFilterQuery);
+      if (parsedQuery.folderFilter) {
+        pass = pass && folderName.toLowerCase().includes(parsedQuery.folderFilter);
       }
 
-      if (!domainFilter && !tagFilterQuery && !folderFilterQuery && query) {
-        const text =
-          `${item.name || ""} ${item.desc || ""} ${folderName} ${(item.tags || []).join(" ")}`.toLowerCase();
-        pass = pass && text.includes(query.toLowerCase());
+      if (parsedQuery.isPinned !== null) {
+        pass = pass && !!item.pinned === parsedQuery.isPinned;
+      }
+
+      if (parsedQuery.hasReader) {
+        pass =
+          pass &&
+          !!(
+            item.reader &&
+            Array.isArray(item.reader.blocks) &&
+            item.reader.blocks.some(
+              (block) =>
+                block && !String(block).includes("본문 텍스트를 충분히 추출하지 못했습니다.")
+            )
+          );
+      }
+
+      if (parsedQuery.dateAfter !== null) {
+        pass = pass && (item.createdAt || 0) >= parsedQuery.dateAfter;
+      }
+
+      if (parsedQuery.dateBefore !== null) {
+        pass = pass && (item.createdAt || 0) <= parsedQuery.dateBefore;
+      }
+
+      if (parsedQuery.isBroken !== null) {
+        pass = pass && (!!item.linkHealth?.broken === parsedQuery.isBroken);
+      }
+
+      if (parsedQuery.freeTerms.length) {
+        const text = `${item.name || ""} ${item.desc || ""} ${folderName} ${(item.tags || []).join(" ")}`.toLowerCase();
+        pass = pass && parsedQuery.freeTerms.every((term) => text.includes(term));
       }
 
       if (selectedTags.length) {
@@ -1543,8 +1702,10 @@
     const titleRow = document.createElement("div");
     titleRow.className = "card-title-row";
 
-    const favicon = createFaviconImage(item.faviconUrl, item.url, item.domain);
-    titleRow.appendChild(favicon);
+    if (currentViewMode === "list") {
+      const favicon = createFaviconImage(item.faviconUrl, item.url, item.domain);
+      titleRow.appendChild(favicon);
+    }
 
     const title = document.createElement("div");
     title.className = "card-title";
@@ -1557,6 +1718,14 @@
     folder.textContent = folderName;
     folder.title = folderName;
     titleRow.appendChild(folder);
+
+    if (item.linkHealth?.broken) {
+      const brokenBadge = document.createElement("span");
+      brokenBadge.className = "link-health-badge";
+      const statusLabel = item.linkHealth.status ? `(${item.linkHealth.status})` : "";
+      brokenBadge.textContent = `죽은 링크${statusLabel}`;
+      titleRow.appendChild(brokenBadge);
+    }
     main.appendChild(titleRow);
 
     if (item.desc && currentViewMode !== "list") {
@@ -1619,6 +1788,11 @@
     deleteButton.textContent = "삭제";
     deleteButton.onclick = () => deleteBookmark(item.id);
     actions.appendChild(deleteButton);
+
+    const copyButton = document.createElement("button");
+    copyButton.textContent = "복사";
+    copyButton.onclick = () => copyBookmarkLink(item);
+    actions.appendChild(copyButton);
 
     main.appendChild(actions);
     card.appendChild(main);
@@ -2125,6 +2299,100 @@
     closeSidePanelOnCompact();
   }
 
+  function initializeTagChipInput() {
+    if (!siteTagsChipBox || !siteTagsEditor || !siteTagsInput) {
+      return;
+    }
+
+    renderTagChipTokens();
+
+    siteTagsChipBox.addEventListener("click", () => {
+      siteTagsEditor.focus();
+    });
+
+    siteTagsEditor.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === "," || event.key === " ") {
+        event.preventDefault();
+        commitTagEditorBuffer();
+        return;
+      }
+
+      if (event.key === "Backspace" && !siteTagsEditor.value.trim() && sheetTagTokens.length) {
+        event.preventDefault();
+        sheetTagTokens.pop();
+        syncSheetTagInputFromTokens();
+        renderTagChipTokens();
+      }
+    });
+
+    siteTagsEditor.addEventListener("blur", () => {
+      commitTagEditorBuffer();
+    });
+  }
+
+  function commitTagEditorBuffer() {
+    if (!siteTagsEditor) {
+      return;
+    }
+
+    const parsed = parseTags(siteTagsEditor.value.replace(/,/g, " "));
+    if (!parsed.length) {
+      siteTagsEditor.value = "";
+      return;
+    }
+
+    const merged = Array.from(new Set([...sheetTagTokens, ...parsed]));
+    setSheetTags(merged);
+    siteTagsEditor.value = "";
+  }
+
+  function setSheetTags(tags) {
+    sheetTagTokens = parseTags(Array.isArray(tags) ? tags.join(" ") : String(tags || ""));
+    if (siteTagsEditor) {
+      siteTagsEditor.value = "";
+    }
+    syncSheetTagInputFromTokens();
+    renderTagChipTokens();
+  }
+
+  function syncSheetTagInputFromTokens() {
+    if (!siteTagsInput) {
+      return;
+    }
+    siteTagsInput.value = sheetTagTokens.join(" ");
+  }
+
+  function renderTagChipTokens() {
+    if (!siteTagsChipBox || !siteTagsEditor) {
+      return;
+    }
+
+    siteTagsChipBox
+      .querySelectorAll(".tag-chip-token")
+      .forEach((tokenEl) => tokenEl.remove());
+
+    sheetTagTokens.forEach((tag) => {
+      const token = document.createElement("span");
+      token.className = "tag-chip-token";
+      token.textContent = tag;
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.textContent = "×";
+      removeBtn.title = `${tag} 제거`;
+      removeBtn.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        sheetTagTokens = sheetTagTokens.filter((value) => value !== tag);
+        syncSheetTagInputFromTokens();
+        renderTagChipTokens();
+      };
+      token.appendChild(removeBtn);
+
+      siteTagsChipBox.insertBefore(token, siteTagsEditor);
+    });
+  }
+
   function openSettings() {
     if (!settingsOverlay) {
       return;
@@ -2166,7 +2434,7 @@
     if (siteFaviconUrlInput) {
       siteFaviconUrlInput.value = "";
     }
-    siteTagsInput.value = "";
+    setSheetTags([]);
     siteDescInput.value = "";
     setMetadataPreview(null);
 
@@ -2193,7 +2461,7 @@
     if (siteFaviconUrlInput) {
       siteFaviconUrlInput.value = "";
     }
-    siteTagsInput.value = "";
+    setSheetTags([]);
     siteDescInput.value = "";
     setMetadataPreview(null);
 
@@ -2229,7 +2497,7 @@
     if (siteFaviconUrlInput) {
       siteFaviconUrlInput.value = item.faviconUrl || "";
     }
-    siteTagsInput.value = (item.tags || []).join(" ");
+    setSheetTags(item.tags || []);
     siteDescInput.value = item.desc || "";
     setMetadataPreview({
       image: item.thumbUrl || "",
@@ -2256,6 +2524,7 @@
     if (!metadataPreview) {
       return;
     }
+    setMetadataLoading(false);
 
     if (!metadata || (!metadata.image && !metadata.favicon && !metadata.description && !metadata.domain)) {
       metadataPreview.hidden = true;
@@ -2300,6 +2569,15 @@
     metadataHint.textContent = text;
   }
 
+  function setMetadataLoading(isLoading) {
+    if (metadataSkeleton) {
+      metadataSkeleton.hidden = !isLoading;
+    }
+    if (isLoading && metadataPreview) {
+      metadataPreview.hidden = true;
+    }
+  }
+
   async function autofillMetadataFromUrl(url) {
     const normalized = normalizeUrl(url);
     if (!normalized) {
@@ -2308,6 +2586,7 @@
 
     const requestId = Date.now() + Math.random();
     metadataRequestInFlight = requestId;
+    setMetadataLoading(true);
     setMetadataHint("메타데이터를 불러오는 중...");
     if (nextBtn) {
       nextBtn.disabled = true;
@@ -2344,6 +2623,9 @@
       }
       setMetadataHint("메타데이터 자동 추출에 실패했습니다. 필요하면 직접 입력해주세요.");
     } finally {
+      if (metadataRequestInFlight === requestId) {
+        setMetadataLoading(false);
+      }
       if (metadataRequestInFlight === requestId && nextBtn) {
         nextBtn.disabled = false;
       }
@@ -2519,18 +2801,32 @@
       el.remove();
     });
 
-    const root =
-      doc.querySelector("article") ||
-      doc.querySelector("main") ||
-      doc.querySelector("[role='main']") ||
-      doc.body;
+    const rootCandidates = [
+      doc.querySelector("article"),
+      doc.querySelector("main"),
+      doc.querySelector("[role='main']"),
+      doc.querySelector(".markdown-body"),
+      doc.querySelector(".entry-content"),
+      doc.querySelector(".post-content"),
+      doc.querySelector(".article-body"),
+      doc.querySelector("#readme")
+    ].filter((node) => !!node);
 
-    const blocks = Array.from(root.querySelectorAll("p"))
-      .map((el) => (el.textContent || "").trim())
-      .filter((text) => text.length >= 40)
-      .slice(0, 40);
+    const primaryRoot = rootCandidates[0] || doc.body;
 
-    const images = Array.from(root.querySelectorAll("img"))
+    let blocks = [];
+    for (const root of rootCandidates.length ? rootCandidates : [primaryRoot]) {
+      blocks = extractReaderBlocksFromRoot(root);
+      if (blocks.length >= 4) {
+        break;
+      }
+    }
+
+    if (blocks.length < 3) {
+      blocks = extractReaderTextFallback(html, doc);
+    }
+
+    const images = Array.from(primaryRoot.querySelectorAll("img"))
       .map((img) => normalizeAssetUrl(img.getAttribute("src") || "", url))
       .filter((src, index, arr) => src && arr.indexOf(src) === index)
       .slice(0, 8);
@@ -2541,13 +2837,63 @@
           ['meta[property="og:title"]', "content"],
           ["title", "textContent"]
         ]) || suggestName(url),
-      blocks: blocks.length ? blocks : ["본문 텍스트를 충분히 추출하지 못했습니다."],
+      blocks: blocks.length
+        ? blocks
+        : ["본문 텍스트를 충분히 추출하지 못했습니다. 원문 열기로 확인해주세요."],
       images,
       extractedAt: Date.now()
     };
   }
 
+  function extractReaderBlocksFromRoot(root) {
+    if (!root) {
+      return [];
+    }
+
+    const seen = new Set();
+    return Array.from(root.querySelectorAll("p, li, h1, h2, h3, pre"))
+      .map((el) => (el.textContent || "").replace(/\s+/g, " ").trim())
+      .filter((text) => text.length >= 26)
+      .filter((text) => {
+        if (seen.has(text)) {
+          return false;
+        }
+        seen.add(text);
+        return true;
+      })
+      .slice(0, 60);
+  }
+
+  function extractReaderTextFallback(html, doc) {
+    const metaDescription =
+      pickFirstMeta(doc, [
+        ['meta[property="og:description"]', "content"],
+        ['meta[name="description"]', "content"]
+      ]) || "";
+
+    const textOnly = String(html || "")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const rawParts = textOnly.split(/(?<=[.!?])\s+/).filter((part) => part.length >= 45);
+    const blocks = rawParts.slice(0, 40);
+
+    if (metaDescription && !blocks.length) {
+      return [metaDescription];
+    }
+
+    if (metaDescription && blocks.length) {
+      blocks.unshift(metaDescription);
+    }
+
+    return Array.from(new Set(blocks)).slice(0, 40);
+  }
+
   function saveBookmarkFromSheet() {
+    commitTagEditorBuffer();
     const normalizedUrl = normalizeUrl(siteUrlInput.value.trim());
     let name = siteNameInput.value.trim();
     const folder = normalizeFolderName((siteFolderInput?.value || "").trim());
@@ -2847,6 +3193,225 @@
     prompt("아래 코드를 복사해 북마클릿으로 저장하세요.", code);
   }
 
+  function copyBookmarkLink(item) {
+    if (!item || !item.url) {
+      return;
+    }
+
+    const title = (item.name || item.url).replace(/\]/g, "\\]");
+    const markdown = `[${title}](${item.url})`;
+    const plain = item.url;
+    const payload = `${markdown}\n${plain}`;
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(payload).then(
+        () => {
+          showToast("링크를 복사했어요");
+        },
+        () => {
+          prompt("아래 텍스트를 복사하세요.", payload);
+        }
+      );
+      return;
+    }
+
+    prompt("아래 텍스트를 복사하세요.", payload);
+  }
+
+  function scheduleDeadLinkCheck() {
+    if (deadLinkCheckScheduled || deadLinkCheckInFlight) {
+      return;
+    }
+
+    deadLinkCheckScheduled = true;
+    const runner = () => {
+      deadLinkCheckScheduled = false;
+      runDeadLinkCheckBatch().catch(() => {});
+    };
+
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(runner, { timeout: 6000 });
+      return;
+    }
+
+    setTimeout(runner, 2200);
+  }
+
+  function shouldCheckLinkHealth(item, now, force) {
+    if (!item || !item.url) {
+      return false;
+    }
+    if (force) {
+      return true;
+    }
+    if (now - (item.createdAt || 0) < LINK_CHECK_MIN_AGE_MS) {
+      return false;
+    }
+    const checkedAt = item.linkHealth?.checkedAt || 0;
+    return now - checkedAt >= LINK_CHECK_RECHECK_MS;
+  }
+
+  async function runDeadLinkCheckBatch(options = {}) {
+    if (deadLinkCheckInFlight) {
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return;
+    }
+
+    deadLinkCheckInFlight = true;
+    const force = options.force === true;
+    const full = options.full === true;
+    const now = Date.now();
+    const limit = full ? 30 : LINK_CHECK_BATCH_SIZE;
+
+    try {
+      const data = getData();
+      const candidates = data.bookmarks
+        .filter((item) => shouldCheckLinkHealth(item, now, force))
+        .sort((a, b) => (a.linkHealth?.checkedAt || 0) - (b.linkHealth?.checkedAt || 0))
+        .slice(0, limit);
+
+      if (!candidates.length) {
+        if (full) {
+          showToast("검사할 오래된 링크가 없습니다");
+        }
+        return;
+      }
+
+      let changed = false;
+      for (const item of candidates) {
+        const probed = await probeLinkHealth(item.url);
+        if (!probed) {
+          continue;
+        }
+
+        const index = data.bookmarks.findIndex((bookmark) => bookmark.id === item.id);
+        if (index < 0) {
+          continue;
+        }
+
+        const nextHealth = {
+          checkedAt: Date.now(),
+          status: probed.status,
+          broken: probed.broken
+        };
+        const prevHealth = data.bookmarks[index].linkHealth || null;
+        const same =
+          prevHealth &&
+          prevHealth.status === nextHealth.status &&
+          prevHealth.broken === nextHealth.broken &&
+          Math.abs((prevHealth.checkedAt || 0) - nextHealth.checkedAt) < 1000;
+
+        if (same) {
+          continue;
+        }
+
+        data.bookmarks[index] = normalizeBookmark({
+          ...data.bookmarks[index],
+          linkHealth: nextHealth,
+          updatedAt: Date.now()
+        });
+        changed = true;
+      }
+
+      if (changed) {
+        data.updatedAt = Date.now();
+        saveData(data, { touch: false });
+        scheduleAutoSync();
+        renderBookmarks();
+      }
+
+      if (!full) {
+        scheduleDeadLinkCheck();
+      } else {
+        showToast("죽은 링크 검사 완료");
+      }
+    } finally {
+      deadLinkCheckInFlight = false;
+    }
+  }
+
+  async function probeLinkHealth(url) {
+    const normalized = normalizeUrl(url);
+    if (!normalized) {
+      return null;
+    }
+
+    const timeoutMs = 8000;
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+    try {
+      const headResponse = await fetch(normalized, {
+        method: "HEAD",
+        redirect: "follow",
+        cache: "no-store",
+        signal: controller ? controller.signal : undefined
+      });
+      if (headResponse.type === "opaque") {
+        return null;
+      }
+      const status = headResponse.status || 0;
+      if (status === 405 || status === 501) {
+        const getResponse = await fetch(normalized, {
+          method: "GET",
+          redirect: "follow",
+          cache: "no-store",
+          signal: controller ? controller.signal : undefined
+        });
+        const getStatus = getResponse.type === "opaque" ? 0 : getResponse.status || 0;
+        return {
+          status: getStatus,
+          broken: getStatus >= 400
+        };
+      }
+      return {
+        status,
+        broken: status >= 400
+      };
+    } catch (_error) {
+      return null;
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  function deleteBrokenLinks() {
+    const data = getData();
+    const brokenIds = data.bookmarks
+      .filter((item) => item.linkHealth?.broken)
+      .map((item) => item.id);
+
+    if (!brokenIds.length) {
+      showToast("삭제할 죽은 링크가 없습니다");
+      return;
+    }
+
+    if (!confirm(`죽은 링크 ${brokenIds.length}개를 삭제할까요?`)) {
+      return;
+    }
+
+    const idSet = new Set(brokenIds);
+    const now = Date.now();
+    data.bookmarks = data.bookmarks.filter((item) => {
+      if (!idSet.has(item.id)) {
+        return true;
+      }
+      upsertTombstone(data, item.id, now);
+      return false;
+    });
+
+    data.updatedAt = now;
+    saveData(data, { touch: false });
+    scheduleAutoSync();
+    render();
+    showToast(`${brokenIds.length}개 삭제했습니다`);
+  }
+
   function checkIncomingUrl() {
     if (IS_EXTENSION_CONTEXT) {
       return;
@@ -2969,6 +3534,25 @@
     return domain || "";
   }
 
+  function normalizeLinkHealth(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    const checkedAt = toSafeNumber(value.checkedAt, 0);
+    const status = toSafeNumber(value.status, 0);
+    const broken = !!value.broken;
+
+    if (!checkedAt) {
+      return null;
+    }
+
+    return {
+      checkedAt,
+      status: status > 0 ? status : 0,
+      broken
+    };
+  }
+
   function normalizeBookmark(value) {
     const item = value && typeof value === "object" ? value : {};
 
@@ -3008,7 +3592,8 @@
       visitCount: toSafeNumber(item.visitCount, 0),
       visitedAt: item.visitedAt ? toSafeNumber(item.visitedAt, null) : null,
       domain: extractDomain(normalizedUrl || ""),
-      reader: normalizedReader
+      reader: normalizedReader,
+      linkHealth: normalizeLinkHealth(item.linkHealth)
     };
   }
 
