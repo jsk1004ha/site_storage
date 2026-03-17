@@ -1071,6 +1071,13 @@ main {
   gap: 0.45rem;
   pointer-events: none;
   z-index: 60;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.bottom-utils.is-hidden {
+  opacity: 0;
+  transform: translateY(120%);
+  pointer-events: none;
 }
 
 .bottom-utils button {
@@ -1086,15 +1093,7 @@ main {
   white-space: nowrap;
 }
 
-#saveCurrentTabBtn {
-  display: none;
-}
-
-body[data-app-context="extension"] #saveCurrentTabBtn {
-  display: inline-block;
-}
-
-body[data-app-context="extension"] #bookmarkletBtn {
+body[data-app-context="extension"] .bottom-utils {
   display: none;
 }
 
@@ -1102,6 +1101,9 @@ body[data-app-context="extension"] #bookmarkletBtn {
   position: fixed;
   right: 1rem;
   bottom: 1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   padding: 0;
   background: transparent;
   box-shadow: none;
@@ -1127,6 +1129,26 @@ body[data-app-context="extension"] #bookmarkletBtn {
   border-radius: 999px;
   box-shadow: 0 12px 24px rgba(0, 100, 255, 0.27);
   cursor: pointer;
+}
+
+.cta-tab-btn {
+  display: none;
+  min-width: 7.2rem;
+  height: 3.1rem;
+  padding: 0 1rem;
+  border: 1px solid var(--gray-300);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--toss-blue);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+body[data-app-context="extension"] .cta-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .bottom-cta button.fab {
@@ -1565,6 +1587,7 @@ body[data-theme="dark"] .card,
 body[data-theme="dark"] .sheet,
 body[data-theme="dark"] .reader-panel,
 body[data-theme="dark"] .bottom-utils button,
+body[data-theme="dark"] .cta-tab-btn,
 body[data-theme="dark"] .settings-side-btn,
 body[data-theme="dark"] .menu-btn,
 body[data-theme="dark"] .side-close,
@@ -1903,6 +1926,37 @@ body[data-app-context="extension"] main {
     width: 3rem;
     min-width: 3rem;
     height: 3rem;
+  }
+
+  body[data-app-context="extension"] .bottom-cta {
+    left: auto;
+    right: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 0.45rem;
+  }
+
+  body[data-app-context="extension"] .bottom-cta button {
+    width: auto;
+    min-width: 0;
+  }
+
+  body[data-app-context="extension"] .bottom-cta .cta-tab-btn {
+    min-width: 7.2rem;
+    height: 3rem;
+    padding: 0 0.95rem;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    font-size: 0.9rem;
+  }
+
+  body[data-app-context="extension"] .bottom-cta button.fab {
+    width: 3rem;
+    min-width: 3rem;
+    height: 3rem;
+    flex: 0 0 3rem;
   }
 
   .scroll-top-btn {
