@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Remember - 사이트 보관함",
+  "version": "1.0.0",
+  "description": "웹 페이지와 확장프로그램에서 북마크를 동일 UI로 관리하고 Google Drive로 동기화합니다.",
+  "permissions": ["identity", "tabs"],
+  "host_permissions": [
+    "https://www.googleapis.com/*",
+    "https://accounts.google.com/*"
+  ],
+  "action": {
+    "default_title": "Remember",
+    "default_popup": "extension/popup.html"
+  }
+}
