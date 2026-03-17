@@ -16,6 +16,14 @@
         <option value="recentVisit">최근 방문</option>
         <option value="frequent">자주 방문</option>
       </select>
+      <select id="folderFilterSelect">
+        <option value="">전체 폴더</option>
+      </select>
+      <div class="view-toggle" id="viewToggle">
+        <button type="button" data-view-mode="grid">그리드</button>
+        <button type="button" data-view-mode="list">리스트</button>
+        <button type="button" data-view-mode="magazine" class="active">매거진</button>
+      </div>
     </div>
     <div id="suggestions"></div>
     <div id="tagFilters"></div>
@@ -29,6 +37,11 @@
         <h2 id="settingsTitle">설정</h2>
         <button id="closeSettingsBtn" type="button" class="settings-close">닫기</button>
       </div>
+
+      <section class="appearance-panel">
+        <h3>보기 설정</h3>
+        <button id="themeToggleBtn" type="button" class="theme-toggle-btn">다크 모드 켜기</button>
+      </section>
 
       <section class="drive-panel">
         <div class="drive-head">
@@ -75,6 +88,19 @@
   <input type="file" id="importFile" accept="application/json" hidden />
   <div id="toastContainer"></div>
 
+  <div class="reader-overlay" id="readerOverlay" hidden>
+    <article class="reader-panel">
+      <div class="reader-head">
+        <button id="readerCloseBtn" type="button">닫기</button>
+        <a id="readerOpenOriginal" href="#" target="_blank" rel="noopener noreferrer">원문 열기</a>
+      </div>
+      <h2 id="readerTitle"></h2>
+      <p id="readerSubline"></p>
+      <div id="readerImages" class="reader-images"></div>
+      <div id="readerBody" class="reader-body"></div>
+    </article>
+  </div>
+
   <div class="sheet-overlay" id="sheetOverlay">
     <div class="sheet" id="sheet">
       <div class="sheet-header" id="sheetTitle">새 사이트 추가</div>
@@ -87,8 +113,25 @@
         </div>
       </div>
       <div class="field-group" id="step2">
+        <div class="metadata-preview" id="metadataPreview" hidden>
+          <img id="metadataThumb" alt="미리보기 썸네일" />
+          <div class="metadata-preview-text">
+            <div class="metadata-site">
+              <img id="metadataFavicon" alt="" />
+              <span id="metadataDomain"></span>
+            </div>
+            <p id="metadataDescription"></p>
+          </div>
+        </div>
+        <p class="metadata-hint" id="metadataHint">URL 입력 시 Open Graph 메타데이터를 자동 추출합니다.</p>
         <label for="siteName">사이트 이름</label>
         <input type="text" id="siteName" placeholder="사이트 이름" />
+        <label for="siteFolder">폴더</label>
+        <input type="text" id="siteFolder" placeholder="기본" />
+        <label for="siteThumbUrl">썸네일 URL</label>
+        <input type="url" id="siteThumbUrl" placeholder="자동 추출" />
+        <label for="siteFaviconUrl">파비콘 URL</label>
+        <input type="url" id="siteFaviconUrl" placeholder="자동 추출" />
         <label for="siteTags">태그 (띄어쓰기 또는 쉼표로 구분)</label>
         <input type="text" id="siteTags" placeholder="예: 개발 디자인" />
         <label for="siteDesc">메모 (선택)</label>

@@ -14,28 +14,42 @@
   }
 
   const DATA_KEY = "rememberUnifiedDataV2";
+  const VIEW_MODE_KEY = "rememberViewModeV1";
+  const THEME_KEY = "rememberThemeV1";
   const GOOGLE_CONFIG_KEY = "rememberGoogleConfigV1";
   const GOOGLE_TOKEN_KEY = "rememberGoogleTokenV1";
-  const AUTO_SYNC_DELAY_MS = 1600;
+  const DRIVE_SYNC_CACHE_KEY = "rememberDriveSyncCacheV1";
+  const DEFAULT_FOLDER_NAME = "기본";
+  const AUTO_SYNC_DELAY_MS = 600;
   const AUTO_SYNC_ERROR_COOLDOWN_MS = 15000;
+  const AUTO_SYNC_MASS_DELETE_MIN_ITEMS = 8;
+  const AUTO_SYNC_MASS_DELETE_RATIO = 0.55;
+  const AUTO_SYNC_FULL_RECONCILE_MS = 45000;
 
   const DRIVE_FILE_NAME = "remember-sync-v2.json";
   const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
 
   let selectedTags = [];
+  let selectedFolder = "";
   let currentSort = "recentAdd";
+  let currentViewMode = "magazine";
+  let isDarkMode = false;
   let deletedItem = null;
   let undoTimeout = null;
   let editId = null;
   let sheetMode = "add";
   let smartFilter = "";
+  let metadataRequestInFlight = 0;
   let syncInFlight = false;
   let autoSyncTimer = null;
   let autoSyncPending = false;
+  let autoSyncForceFull = false;
   let lastAutoSyncErrorAt = 0;
 
   const searchInput = byId("searchInput");
   const sortSelect = byId("sortSelect");
+  const folderFilterSelect = byId("folderFilterSelect");
+  const viewToggleButtons = Array.from(document.querySelectorAll("[data-view-mode]"));
   const cardsContainer = byId("cardsContainer");
   const tagFiltersDiv = byId("tagFilters");
   const suggestionsDiv = byId("suggestions");
@@ -46,8 +60,17 @@
   const step2 = byId("step2");
   const siteUrlInput = byId("siteUrl");
   const siteNameInput = byId("siteName");
+  const siteFolderInput = byId("siteFolder");
+  const siteThumbUrlInput = byId("siteThumbUrl");
+  const siteFaviconUrlInput = byId("siteFaviconUrl");
   const siteTagsInput = byId("siteTags");
   const siteDescInput = byId("siteDesc");
+  const metadataPreview = byId("metadataPreview");
+  const metadataThumb = byId("metadataThumb");
+  const metadataFavicon = byId("metadataFavicon");
+  const metadataDomain = byId("metadataDomain");
+  const metadataDescription = byId("metadataDescription");
+  const metadataHint = byId("metadataHint");
   const cancelBtn1 = byId("cancelBtn1");
   const nextBtn = byId("nextBtn");
   const backBtn = byId("backBtn");
@@ -62,6 +85,15 @@
   const settingsOverlay = byId("settingsOverlay");
   const openSettingsBtn = byId("openSettingsBtn");
   const closeSettingsBtn = byId("closeSettingsBtn");
+  const themeToggleBtn = byId("themeToggleBtn");
+
+  const readerOverlay = byId("readerOverlay");
+  const readerCloseBtn = byId("readerCloseBtn");
+  const readerOpenOriginal = byId("readerOpenOriginal");
+  const readerTitle = byId("readerTitle");
+  const readerSubline = byId("readerSubline");
+  const readerImages = byId("readerImages");
+  const readerBody = byId("readerBody");
 
   const driveStatusEl = byId("driveStatus");
   const driveConnectBtn = byId("driveConnectBtn");
@@ -72,19 +104,75 @@
   const saveGoogleConfigBtn = byId("saveGoogleConfigBtn");
   const clearGoogleConfigBtn = byId("clearGoogleConfigBtn");
 
-  if (!searchInput || !sortSelect || !cardsContainer || !tagFiltersDiv || !suggestionsDiv) {
+  if (
+    !searchInput ||
+    !sortSelect ||
+    !folderFilterSelect ||
+    !cardsContainer ||
+    !tagFiltersDiv ||
+    !suggestionsDiv
+  ) {
     return;
   }
 
+  loadUiPreferences();
+  applyTheme();
+  updateThemeToggleLabel();
+  applyViewModeClass();
+  updateViewToggleButtons();
   bindUiEvents();
   loadSavedGoogleConfig();
   refreshDriveStatus();
   render();
   checkIncomingUrl();
-  scheduleAutoSync({ immediate: true });
+  scheduleAutoSync({ immediate: true, fullReconcile: true });
 
   function byId(id) {
     return document.getElementById(id);
+  }
+
+  function loadUiPreferences() {
+    const savedMode = localStorage.getItem(VIEW_MODE_KEY);
+    if (savedMode === "grid" || savedMode === "list" || savedMode === "magazine") {
+      currentViewMode = savedMode;
+    }
+
+    isDarkMode = localStorage.getItem(THEME_KEY) === "dark";
+  }
+
+  function saveViewMode(mode) {
+    currentViewMode = mode;
+    localStorage.setItem(VIEW_MODE_KEY, mode);
+    applyViewModeClass();
+    updateViewToggleButtons();
+    renderBookmarks();
+  }
+
+  function applyViewModeClass() {
+    if (!cardsContainer) {
+      return;
+    }
+    cardsContainer.classList.remove("view-grid", "view-list", "view-magazine");
+    cardsContainer.classList.add(`view-${currentViewMode}`);
+  }
+
+  function updateViewToggleButtons() {
+    viewToggleButtons.forEach((button) => {
+      const mode = button.dataset.viewMode;
+      button.classList.toggle("active", mode === currentViewMode);
+    });
+  }
+
+  function applyTheme() {
+    document.body.dataset.theme = isDarkMode ? "dark" : "light";
+    localStorage.setItem(THEME_KEY, isDarkMode ? "dark" : "light");
+  }
+
+  function updateThemeToggleLabel() {
+    if (!themeToggleBtn) {
+      return;
+    }
+    themeToggleBtn.textContent = isDarkMode ? "라이트 모드 켜기" : "다크 모드 켜기";
   }
 
   function handleOAuthCallbackPage() {
@@ -112,6 +200,21 @@
       renderBookmarks();
     });
 
+    folderFilterSelect?.addEventListener("change", function () {
+      selectedFolder = this.value;
+      renderBookmarks();
+    });
+
+    viewToggleButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.viewMode;
+        if (!mode || mode === currentViewMode) {
+          return;
+        }
+        saveViewMode(mode);
+      });
+    });
+
     searchInput.addEventListener("input", () => {
       smartFilter = "";
       renderBookmarks();
@@ -128,7 +231,7 @@
       }
     });
 
-    nextBtn?.addEventListener("click", () => {
+    nextBtn?.addEventListener("click", async () => {
       const normalized = normalizeUrl(siteUrlInput.value.trim());
       if (!normalized) {
         alert("올바른 URL을 입력해주세요");
@@ -140,14 +243,29 @@
         siteNameInput.value = suggestName(normalized);
       }
 
+      await autofillMetadataFromUrl(normalized);
+
       step1.classList.remove("active");
       step2.classList.add("active");
+    });
+
+    siteUrlInput?.addEventListener("blur", () => {
+      const normalized = normalizeUrl(siteUrlInput.value.trim());
+      if (!normalized) {
+        return;
+      }
+      autofillMetadataFromUrl(normalized);
     });
 
     saveBtn?.addEventListener("click", saveBookmarkFromSheet);
     openSheetBtn?.addEventListener("click", openAdd);
     openSettingsBtn?.addEventListener("click", openSettings);
     closeSettingsBtn?.addEventListener("click", closeSettings);
+    themeToggleBtn?.addEventListener("click", () => {
+      isDarkMode = !isDarkMode;
+      applyTheme();
+      updateThemeToggleLabel();
+    });
 
     sheetOverlay?.addEventListener("click", (event) => {
       if (event.target === sheetOverlay) {
@@ -161,12 +279,21 @@
       }
     });
 
+    readerOverlay?.addEventListener("click", (event) => {
+      if (event.target === readerOverlay) {
+        closeReader();
+      }
+    });
+
+    readerCloseBtn?.addEventListener("click", closeReader);
+
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Escape") {
         return;
       }
       closeSheet();
       closeSettings();
+      closeReader();
     });
 
     exportBtn?.addEventListener("click", exportData);
@@ -185,7 +312,7 @@
     driveConnectBtn?.addEventListener("click", () => {
       runDriveTask(async () => {
         await ensureGoogleToken();
-        scheduleAutoSync({ immediate: true });
+        scheduleAutoSync({ immediate: true, fullReconcile: true });
         showToast("Google Drive 연결 완료");
       });
     });
@@ -230,6 +357,7 @@
 
       saveGoogleConfig(clientId);
       clearGoogleToken();
+      clearDriveSyncCache();
       cancelAutoSync();
       refreshDriveStatus();
       showToast("Client ID를 저장했습니다");
@@ -241,6 +369,7 @@
       }
       clearGoogleConfig();
       clearGoogleToken();
+      clearDriveSyncCache();
       cancelAutoSync();
       if (googleClientIdInput) {
         googleClientIdInput.value = "";
@@ -250,12 +379,12 @@
     });
 
     window.addEventListener("focus", () => {
-      scheduleAutoSync({ immediate: true });
+      scheduleAutoSync({ immediate: true, fullReconcile: true });
     });
 
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
-        scheduleAutoSync({ immediate: true });
+        scheduleAutoSync({ immediate: true, fullReconcile: true });
       }
     });
   }
@@ -289,6 +418,59 @@
     driveStatusEl.className = "drive-status offline";
   }
 
+  function getDriveSyncCache() {
+    const raw = localStorage.getItem(DRIVE_SYNC_CACHE_KEY);
+    if (!raw) {
+      return { fileId: "", lastFullSyncAt: 0, lastFastSyncAt: 0 };
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      return {
+        fileId: String(parsed.fileId || "").trim(),
+        lastFullSyncAt: toSafeNumber(parsed.lastFullSyncAt, 0),
+        lastFastSyncAt: toSafeNumber(parsed.lastFastSyncAt, 0)
+      };
+    } catch (_error) {
+      return { fileId: "", lastFullSyncAt: 0, lastFastSyncAt: 0 };
+    }
+  }
+
+  function saveDriveSyncCache(patch = {}) {
+    const current = getDriveSyncCache();
+    const next = {
+      fileId: String(
+        Object.prototype.hasOwnProperty.call(patch, "fileId") ? patch.fileId : current.fileId
+      ).trim(),
+      lastFullSyncAt: toSafeNumber(
+        Object.prototype.hasOwnProperty.call(patch, "lastFullSyncAt")
+          ? patch.lastFullSyncAt
+          : current.lastFullSyncAt,
+        0
+      ),
+      lastFastSyncAt: toSafeNumber(
+        Object.prototype.hasOwnProperty.call(patch, "lastFastSyncAt")
+          ? patch.lastFastSyncAt
+          : current.lastFastSyncAt,
+        0
+      )
+    };
+
+    localStorage.setItem(DRIVE_SYNC_CACHE_KEY, JSON.stringify(next));
+  }
+
+  function clearDriveSyncCache() {
+    localStorage.removeItem(DRIVE_SYNC_CACHE_KEY);
+  }
+
+  function shouldRunPeriodicFullSync() {
+    const cache = getDriveSyncCache();
+    if (!cache.fileId) {
+      return true;
+    }
+    return Date.now() - cache.lastFullSyncAt >= AUTO_SYNC_FULL_RECONCILE_MS;
+  }
+
   function canAutoSync() {
     const config = getGoogleConfig();
     if (!config.clientId) {
@@ -303,9 +485,14 @@
       autoSyncTimer = null;
     }
     autoSyncPending = false;
+    autoSyncForceFull = false;
   }
 
   function scheduleAutoSync(options = {}) {
+    if (options.fullReconcile) {
+      autoSyncForceFull = true;
+    }
+
     if (!canAutoSync()) {
       cancelAutoSync();
       return;
@@ -321,31 +508,56 @@
       return;
     }
 
-    const delay = options.immediate ? 100 : AUTO_SYNC_DELAY_MS;
+    const delay = options.immediate ? 80 : AUTO_SYNC_DELAY_MS;
     autoSyncTimer = setTimeout(() => {
+      const fullReconcile = autoSyncForceFull;
+      autoSyncForceFull = false;
       autoSyncTimer = null;
-      runAutoSync();
+      runAutoSync({ fullReconcile });
     }, delay);
   }
 
-  function runAutoSync() {
+  function runAutoSync(options = {}) {
     if (!canAutoSync()) {
       cancelAutoSync();
       return;
     }
 
+    const fullReconcile = options.fullReconcile === true || shouldRunPeriodicFullSync();
+
     if (syncInFlight) {
       autoSyncPending = true;
+      if (fullReconcile) {
+        autoSyncForceFull = true;
+      }
       return;
     }
 
+    let syncResult = { skipped: false, message: "" };
+
     runDriveTask(
       async () => {
-        await syncWithDrive({ interactive: false });
-        render();
+        syncResult = await syncWithDrive({
+          interactive: false,
+          safeMode: true,
+          mode: fullReconcile ? "full" : "autoFast"
+        });
+
+        if (!syncResult?.skipped && fullReconcile) {
+          render();
+        }
       },
       { silent: true }
     ).then((succeeded) => {
+      if (syncResult?.skipped) {
+        const now = Date.now();
+        if (now - lastAutoSyncErrorAt >= AUTO_SYNC_ERROR_COOLDOWN_MS) {
+          lastAutoSyncErrorAt = now;
+          showToast(syncResult.message || "자동 동기화를 안전모드로 중단했습니다");
+        }
+        return;
+      }
+
       if (succeeded) {
         lastAutoSyncErrorAt = 0;
         return;
@@ -384,18 +596,59 @@
 
         if (autoSyncPending) {
           const shouldResume = canAutoSync();
+          const fullReconcile = autoSyncForceFull;
           autoSyncPending = false;
+          autoSyncForceFull = false;
           if (!shouldResume) {
             return;
           }
-          scheduleAutoSync({ immediate: true });
+          scheduleAutoSync({ immediate: true, fullReconcile });
         }
       });
   }
   function render() {
+    applyViewModeClass();
+    updateViewToggleButtons();
+    renderFolderFilters();
     renderTagFilters();
     renderSuggestions();
     renderBookmarks();
+  }
+
+  function renderFolderFilters() {
+    if (!folderFilterSelect) {
+      return;
+    }
+
+    const bookmarks = getBookmarks();
+    const folders = Array.from(
+      new Set(
+        bookmarks
+          .map((item) => normalizeFolderName(item.folder || ""))
+          .filter((folder) => folder)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+
+    folderFilterSelect.innerHTML = "";
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "전체 폴더";
+    folderFilterSelect.appendChild(allOption);
+
+    folders.forEach((folder) => {
+      const option = document.createElement("option");
+      option.value = folder;
+      option.textContent = folder;
+      folderFilterSelect.appendChild(option);
+    });
+
+    if (selectedFolder && folders.includes(selectedFolder)) {
+      folderFilterSelect.value = selectedFolder;
+      return;
+    }
+
+    selectedFolder = "";
+    folderFilterSelect.value = "";
   }
 
   function renderTagFilters() {
@@ -426,20 +679,24 @@
       smartFilter = "";
       searchInput.value = "";
       selectedTags = [];
+      selectedFolder = "";
       sortSelect.value = "recentVisit";
       currentSort = "recentVisit";
       renderBookmarks();
       renderTagFilters();
+      renderFolderFilters();
     });
 
     appendSuggestion("자주 본", () => {
       smartFilter = "";
       searchInput.value = "";
       selectedTags = [];
+      selectedFolder = "";
       sortSelect.value = "frequent";
       currentSort = "frequent";
       renderBookmarks();
       renderTagFilters();
+      renderFolderFilters();
     });
 
     const tagCounts = {};
@@ -457,10 +714,12 @@
           smartFilter = "";
           searchInput.value = "";
           selectedTags = [tag];
+          selectedFolder = "";
           sortSelect.value = "recentAdd";
           currentSort = "recentAdd";
           renderBookmarks();
           renderTagFilters();
+          renderFolderFilters();
         });
       });
 
@@ -481,10 +740,12 @@
           smartFilter = "";
           searchInput.value = "site:" + domain;
           selectedTags = [];
+          selectedFolder = "";
           sortSelect.value = "recentAdd";
           currentSort = "recentAdd";
           renderBookmarks();
           renderTagFilters();
+          renderFolderFilters();
         });
       });
 
@@ -492,10 +753,12 @@
       smartFilter = "stale30";
       searchInput.value = "";
       selectedTags = [];
+      selectedFolder = "";
       sortSelect.value = "recentAdd";
       currentSort = "recentAdd";
       renderBookmarks();
       renderTagFilters();
+      renderFolderFilters();
     });
   }
 
@@ -513,15 +776,19 @@
 
     let domainFilter = null;
     let tagFilterQuery = null;
+    let folderFilterQuery = null;
 
     if (query.startsWith("site:")) {
       domainFilter = query.slice(5).trim().toLowerCase();
     } else if (query.startsWith("#")) {
       tagFilterQuery = query.slice(1).trim().toLowerCase();
+    } else if (query.startsWith("folder:")) {
+      folderFilterQuery = query.slice(7).trim().toLowerCase();
     }
 
     const filtered = all.filter((item) => {
       let pass = true;
+      const folderName = normalizeFolderName(item.folder || "");
 
       if (smartFilter === "stale30") {
         const threshold = Date.now() - 30 * 24 * 60 * 60 * 1000;
@@ -538,13 +805,22 @@
         pass = pass && (item.tags || []).some((tag) => tag.toLowerCase().includes(tagFilterQuery));
       }
 
-      if (!domainFilter && !tagFilterQuery && query) {
-        const text = `${item.name || ""} ${item.desc || ""} ${(item.tags || []).join(" ")}`.toLowerCase();
+      if (folderFilterQuery) {
+        pass = pass && folderName.toLowerCase().includes(folderFilterQuery);
+      }
+
+      if (!domainFilter && !tagFilterQuery && !folderFilterQuery && query) {
+        const text =
+          `${item.name || ""} ${item.desc || ""} ${folderName} ${(item.tags || []).join(" ")}`.toLowerCase();
         pass = pass && text.includes(query.toLowerCase());
       }
 
       if (selectedTags.length) {
         pass = pass && selectedTags.every((tag) => (item.tags || []).includes(tag));
+      }
+
+      if (selectedFolder) {
+        pass = pass && folderName === selectedFolder;
       }
 
       return pass;
@@ -570,10 +846,11 @@
     });
 
     cardsContainer.innerHTML = "";
+    applyViewModeClass();
 
     if (!filtered.length) {
       const empty = document.createElement("p");
-      empty.textContent = query || selectedTags.length
+      empty.textContent = query || selectedTags.length || selectedFolder
         ? "검색 결과가 없습니다. 다른 키워드를 사용해보세요."
         : "아직 저장된 사이트가 없습니다. 하단 버튼으로 추가해보세요.";
       cardsContainer.appendChild(empty);
@@ -590,19 +867,38 @@
       pin.onclick = () => togglePin(item.id);
       card.appendChild(pin);
 
+      if (currentViewMode !== "list") {
+        card.appendChild(createCardMedia(item));
+      }
+
+      const main = document.createElement("div");
+      main.className = "card-main";
+
+      const titleRow = document.createElement("div");
+      titleRow.className = "card-title-row";
+
+      const favicon = createFaviconImage(item.faviconUrl);
+      titleRow.appendChild(favicon);
+
       const title = document.createElement("div");
       title.className = "card-title";
       title.textContent = item.name || item.url;
-      card.appendChild(title);
+      titleRow.appendChild(title);
 
-      if (item.desc) {
+      const folder = document.createElement("span");
+      folder.className = "card-folder";
+      folder.textContent = normalizeFolderName(item.folder || "");
+      titleRow.appendChild(folder);
+      main.appendChild(titleRow);
+
+      if (item.desc && currentViewMode !== "list") {
         const desc = document.createElement("div");
         desc.className = "card-desc";
         desc.textContent = item.desc;
-        card.appendChild(desc);
+        main.appendChild(desc);
       }
 
-      if (item.tags && item.tags.length) {
+      if (item.tags && item.tags.length && currentViewMode !== "list") {
         const tags = document.createElement("div");
         tags.className = "card-tags";
         item.tags.forEach((tag) => {
@@ -610,7 +906,7 @@
           span.textContent = tag;
           tags.appendChild(span);
         });
-        card.appendChild(tags);
+        main.appendChild(tags);
       }
 
       const parts = [];
@@ -621,11 +917,11 @@
         parts.push(`${item.visitCount}회 방문`);
       }
 
-      if (parts.length) {
+      if (parts.length && currentViewMode !== "list") {
         const meta = document.createElement("div");
         meta.className = "card-meta";
         meta.textContent = parts.join(" · ");
-        card.appendChild(meta);
+        main.appendChild(meta);
       }
 
       const actions = document.createElement("div");
@@ -646,14 +942,48 @@
       editButton.onclick = () => openEdit(item.id);
       actions.appendChild(editButton);
 
+      const readButton = document.createElement("button");
+      readButton.textContent = "읽기";
+      readButton.onclick = () => openReader(item.id);
+      actions.appendChild(readButton);
+
       const deleteButton = document.createElement("button");
       deleteButton.textContent = "삭제";
       deleteButton.onclick = () => deleteBookmark(item.id);
       actions.appendChild(deleteButton);
 
-      card.appendChild(actions);
+      main.appendChild(actions);
+      card.appendChild(main);
       cardsContainer.appendChild(card);
     });
+  }
+
+  function createCardMedia(item) {
+    const media = document.createElement("div");
+    media.className = "card-media";
+
+    if (item.thumbUrl) {
+      const image = document.createElement("img");
+      image.src = item.thumbUrl;
+      image.alt = `${item.name || item.url} 썸네일`;
+      media.appendChild(image);
+      return media;
+    }
+
+    const fallback = document.createElement("div");
+    fallback.className = "fallback";
+    fallback.textContent = (item.domain || item.name || "?").slice(0, 1).toUpperCase();
+    media.appendChild(fallback);
+    return media;
+  }
+
+  function createFaviconImage(faviconUrl) {
+    const favicon = document.createElement("img");
+    favicon.className = "card-favicon";
+    favicon.src = faviconUrl || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+    favicon.alt = "";
+    favicon.loading = "lazy";
+    return favicon;
   }
 
   function toggleTagFilter(tag) {
@@ -699,8 +1029,18 @@
 
     siteUrlInput.value = "";
     siteNameInput.value = "";
+    if (siteFolderInput) {
+      siteFolderInput.value = DEFAULT_FOLDER_NAME;
+    }
+    if (siteThumbUrlInput) {
+      siteThumbUrlInput.value = "";
+    }
+    if (siteFaviconUrlInput) {
+      siteFaviconUrlInput.value = "";
+    }
     siteTagsInput.value = "";
     siteDescInput.value = "";
+    setMetadataPreview(null);
 
     step1.classList.add("active");
     step2.classList.remove("active");
@@ -716,14 +1056,27 @@
 
     siteUrlInput.value = url || "";
     siteNameInput.value = name || suggestName(url || "");
+    if (siteFolderInput) {
+      siteFolderInput.value = DEFAULT_FOLDER_NAME;
+    }
+    if (siteThumbUrlInput) {
+      siteThumbUrlInput.value = "";
+    }
+    if (siteFaviconUrlInput) {
+      siteFaviconUrlInput.value = "";
+    }
     siteTagsInput.value = "";
     siteDescInput.value = "";
+    setMetadataPreview(null);
 
     step1.classList.remove("active");
     step2.classList.add("active");
 
     sheetOverlay.style.display = "flex";
     setTimeout(() => sheet.classList.add("open"), 10);
+    if (url) {
+      autofillMetadataFromUrl(url);
+    }
   }
 
   function openEdit(id) {
@@ -739,8 +1092,23 @@
 
     siteUrlInput.value = item.url;
     siteNameInput.value = item.name || "";
+    if (siteFolderInput) {
+      siteFolderInput.value = normalizeFolderName(item.folder || "");
+    }
+    if (siteThumbUrlInput) {
+      siteThumbUrlInput.value = item.thumbUrl || "";
+    }
+    if (siteFaviconUrlInput) {
+      siteFaviconUrlInput.value = item.faviconUrl || "";
+    }
     siteTagsInput.value = (item.tags || []).join(" ");
     siteDescInput.value = item.desc || "";
+    setMetadataPreview({
+      image: item.thumbUrl || "",
+      favicon: item.faviconUrl || "",
+      description: item.desc || "",
+      domain: item.domain || extractDomain(item.url)
+    });
 
     step1.classList.remove("active");
     step2.classList.add("active");
@@ -756,9 +1124,306 @@
     }, 250);
   }
 
+  function setMetadataPreview(metadata) {
+    if (!metadataPreview) {
+      return;
+    }
+
+    if (!metadata || (!metadata.image && !metadata.favicon && !metadata.description && !metadata.domain)) {
+      metadataPreview.hidden = true;
+      if (metadataThumb) {
+        metadataThumb.src = "";
+        metadataThumb.style.display = "none";
+      }
+      if (metadataFavicon) {
+        metadataFavicon.src = "";
+        metadataFavicon.style.display = "none";
+      }
+      if (metadataDomain) {
+        metadataDomain.textContent = "";
+      }
+      if (metadataDescription) {
+        metadataDescription.textContent = "";
+      }
+      return;
+    }
+
+    metadataPreview.hidden = false;
+    if (metadataThumb) {
+      metadataThumb.src = metadata.image || "";
+      metadataThumb.style.display = metadata.image ? "block" : "none";
+    }
+    if (metadataFavicon) {
+      metadataFavicon.src = metadata.favicon || "";
+      metadataFavicon.style.display = metadata.favicon ? "block" : "none";
+    }
+    if (metadataDomain) {
+      metadataDomain.textContent = metadata.domain || "";
+    }
+    if (metadataDescription) {
+      metadataDescription.textContent = metadata.description || "설명 정보를 찾지 못했습니다.";
+    }
+  }
+
+  function setMetadataHint(text) {
+    if (!metadataHint) {
+      return;
+    }
+    metadataHint.textContent = text;
+  }
+
+  async function autofillMetadataFromUrl(url) {
+    const normalized = normalizeUrl(url);
+    if (!normalized) {
+      return;
+    }
+
+    const requestId = Date.now() + Math.random();
+    metadataRequestInFlight = requestId;
+    setMetadataHint("메타데이터를 불러오는 중...");
+    if (nextBtn) {
+      nextBtn.disabled = true;
+    }
+
+    try {
+      const metadata = await extractMetadataForUrl(normalized);
+      if (metadataRequestInFlight !== requestId) {
+        return;
+      }
+
+      const currentName = (siteNameInput?.value || "").trim();
+      if (!currentName || currentName === suggestName(normalized)) {
+        siteNameInput.value = metadata.title || suggestName(normalized);
+      }
+      if (siteDescInput && !siteDescInput.value.trim()) {
+        siteDescInput.value = metadata.description || "";
+      }
+      if (siteThumbUrlInput && !siteThumbUrlInput.value.trim()) {
+        siteThumbUrlInput.value = metadata.image || "";
+      }
+      if (siteFaviconUrlInput && !siteFaviconUrlInput.value.trim()) {
+        siteFaviconUrlInput.value = metadata.favicon || "";
+      }
+      if (siteFolderInput && !siteFolderInput.value.trim()) {
+        siteFolderInput.value = DEFAULT_FOLDER_NAME;
+      }
+
+      setMetadataPreview(metadata);
+      setMetadataHint("Open Graph 정보를 자동 반영했습니다.");
+    } catch (_error) {
+      if (metadataRequestInFlight !== requestId) {
+        return;
+      }
+      setMetadataHint("메타데이터 자동 추출에 실패했습니다. 필요하면 직접 입력해주세요.");
+    } finally {
+      if (metadataRequestInFlight === requestId && nextBtn) {
+        nextBtn.disabled = false;
+      }
+    }
+  }
+
+  async function extractMetadataForUrl(url) {
+    const html = await fetchHtmlWithFallback(url);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const title = pickFirstMeta(doc, [
+      ['meta[property="og:title"]', "content"],
+      ['meta[name="twitter:title"]', "content"],
+      ["title", "textContent"]
+    ]) || suggestName(url);
+    const description =
+      pickFirstMeta(doc, [
+        ['meta[property="og:description"]', "content"],
+        ['meta[name="description"]', "content"],
+        ['meta[name="twitter:description"]', "content"]
+      ]) || "";
+    const image = normalizeAssetUrl(
+      pickFirstMeta(doc, [
+        ['meta[property="og:image"]', "content"],
+        ['meta[name="twitter:image"]', "content"]
+      ]),
+      url
+    );
+    const favicon = normalizeAssetUrl(
+      pickFirstMeta(doc, [
+        ['link[rel="icon"]', "href"],
+        ['link[rel="shortcut icon"]', "href"],
+        ['link[rel="apple-touch-icon"]', "href"]
+      ]),
+      url
+    );
+
+    return {
+      title,
+      description,
+      image,
+      favicon,
+      domain: extractDomain(url)
+    };
+  }
+
+  async function fetchHtmlWithFallback(url) {
+    const candidates = [];
+    if (IS_EXTENSION_CONTEXT) {
+      candidates.push(url);
+    }
+    candidates.push(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+    candidates.push(`https://r.jina.ai/http://${url.replace(/^https?:\/\//i, "")}`);
+
+    let lastError = null;
+    for (const endpoint of candidates) {
+      try {
+        const response = await fetch(endpoint, { method: "GET" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const text = await response.text();
+        if (text && text.length > 80) {
+          return text;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError || new Error("페이지를 불러오지 못했습니다");
+  }
+
+  function pickFirstMeta(doc, rules) {
+    for (const [selector, attribute] of rules) {
+      const element = doc.querySelector(selector);
+      if (!element) {
+        continue;
+      }
+      const value =
+        attribute === "textContent"
+          ? (element.textContent || "").trim()
+          : (element.getAttribute(attribute) || "").trim();
+      if (value) {
+        return value;
+      }
+    }
+    return "";
+  }
+
+  async function openReader(id) {
+    if (!readerOverlay || !readerTitle || !readerBody || !readerImages || !readerSubline) {
+      return;
+    }
+
+    const data = getData();
+    const item = data.bookmarks.find((bookmark) => bookmark.id === id);
+    if (!item) {
+      return;
+    }
+
+    readerOverlay.hidden = false;
+    readerTitle.textContent = item.name || item.url;
+    readerSubline.textContent = "본문을 불러오는 중...";
+    readerImages.innerHTML = "";
+    readerBody.innerHTML = "<p>읽기 모드를 준비하고 있습니다...</p>";
+    if (readerOpenOriginal) {
+      readerOpenOriginal.href = item.url;
+    }
+
+    try {
+      const readerData = item.reader || (await extractReaderContent(item.url));
+      renderReader(item, readerData);
+
+      if (!item.reader) {
+        const index = data.bookmarks.findIndex((bookmark) => bookmark.id === id);
+        if (index >= 0) {
+          data.bookmarks[index] = normalizeBookmark({
+            ...data.bookmarks[index],
+            reader: readerData,
+            updatedAt: Date.now()
+          });
+          data.updatedAt = Date.now();
+          saveData(data, { touch: false });
+          scheduleAutoSync();
+        }
+      }
+    } catch (_error) {
+      readerSubline.textContent = "읽기 모드 추출 실패";
+      readerBody.innerHTML = "<p>본문 추출에 실패했습니다. 원문 열기를 이용해주세요.</p>";
+    }
+  }
+
+  function closeReader() {
+    if (!readerOverlay) {
+      return;
+    }
+    readerOverlay.hidden = true;
+  }
+
+  function renderReader(item, readerData) {
+    if (!readerTitle || !readerBody || !readerImages || !readerSubline) {
+      return;
+    }
+
+    readerTitle.textContent = readerData.title || item.name || item.url;
+    readerSubline.textContent = `${extractDomain(item.url)} · ${new Date(
+      readerData.extractedAt || Date.now()
+    ).toLocaleString()}`;
+    readerImages.innerHTML = "";
+    readerBody.innerHTML = "";
+
+    (readerData.images || []).forEach((imageUrl) => {
+      const image = document.createElement("img");
+      image.src = imageUrl;
+      image.alt = "";
+      image.loading = "lazy";
+      readerImages.appendChild(image);
+    });
+
+    (readerData.blocks || []).forEach((block) => {
+      const p = document.createElement("p");
+      p.textContent = block;
+      readerBody.appendChild(p);
+    });
+  }
+
+  async function extractReaderContent(url) {
+    const html = await fetchHtmlWithFallback(url);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+
+    doc.querySelectorAll("script, style, noscript, header, footer, nav, aside, form").forEach((el) => {
+      el.remove();
+    });
+
+    const root =
+      doc.querySelector("article") ||
+      doc.querySelector("main") ||
+      doc.querySelector("[role='main']") ||
+      doc.body;
+
+    const blocks = Array.from(root.querySelectorAll("p"))
+      .map((el) => (el.textContent || "").trim())
+      .filter((text) => text.length >= 40)
+      .slice(0, 40);
+
+    const images = Array.from(root.querySelectorAll("img"))
+      .map((img) => normalizeAssetUrl(img.getAttribute("src") || "", url))
+      .filter((src, index, arr) => src && arr.indexOf(src) === index)
+      .slice(0, 8);
+
+    return {
+      title:
+        pickFirstMeta(doc, [
+          ['meta[property="og:title"]', "content"],
+          ["title", "textContent"]
+        ]) || suggestName(url),
+      blocks: blocks.length ? blocks : ["본문 텍스트를 충분히 추출하지 못했습니다."],
+      images,
+      extractedAt: Date.now()
+    };
+  }
+
   function saveBookmarkFromSheet() {
     const normalizedUrl = normalizeUrl(siteUrlInput.value.trim());
     let name = siteNameInput.value.trim();
+    const folder = normalizeFolderName((siteFolderInput?.value || "").trim());
+    const thumbUrl = normalizeAssetUrl(siteThumbUrlInput?.value || "");
+    const faviconUrl = normalizeAssetUrl(siteFaviconUrlInput?.value || "");
     const tags = parseTags(siteTagsInput.value);
     const desc = siteDescInput.value.trim();
 
@@ -786,6 +1451,9 @@
         id: generateId(),
         url: normalizedUrl,
         name,
+        folder,
+        thumbUrl,
+        faviconUrl,
         tags,
         desc,
         createdAt: now,
@@ -810,6 +1478,9 @@
           ...original,
           url: normalizedUrl,
           name,
+          folder,
+          thumbUrl,
+          faviconUrl,
           tags,
           desc,
           domain: extractDomain(normalizedUrl),
@@ -1101,6 +1772,11 @@
       .filter((tag, index, list) => tag && list.indexOf(tag) === index);
   }
 
+  function normalizeFolderName(value) {
+    const folder = String(value || "").trim();
+    return folder || DEFAULT_FOLDER_NAME;
+  }
+
   function generateId() {
     return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   }
@@ -1118,6 +1794,27 @@
       return parsed.toString();
     } catch (_error) {
       return null;
+    }
+  }
+
+  function normalizeAssetUrl(url, baseUrl = "") {
+    const raw = String(url || "").trim();
+    if (!raw) {
+      return "";
+    }
+
+    if (/^data:/i.test(raw)) {
+      return raw;
+    }
+
+    try {
+      const parsed = baseUrl ? new URL(raw, baseUrl) : new URL(raw);
+      if (!/^https?:$/i.test(parsed.protocol)) {
+        return "";
+      }
+      return parsed.toString();
+    } catch (_error) {
+      return "";
     }
   }
 
@@ -1141,11 +1838,31 @@
     const normalizedUrl = normalizeUrl(String(item.url || "").trim());
     const createdAt = toSafeNumber(item.createdAt, Date.now());
     const updatedAt = toSafeNumber(item.updatedAt, createdAt);
+    const readerSource = item.reader && typeof item.reader === "object" ? item.reader : null;
+    const readerBlocks = Array.isArray(readerSource?.blocks)
+      ? readerSource.blocks.map((block) => String(block || "").trim()).filter((block) => block)
+      : [];
+    const readerImages = Array.isArray(readerSource?.images)
+      ? readerSource.images
+          .map((src) => normalizeAssetUrl(String(src || ""), normalizedUrl || ""))
+          .filter((src) => src)
+      : [];
+    const normalizedReader = readerSource
+      ? {
+          title: String(readerSource.title || item.name || normalizedUrl || ""),
+          blocks: readerBlocks.slice(0, 80),
+          images: readerImages.slice(0, 12),
+          extractedAt: toSafeNumber(readerSource.extractedAt, updatedAt)
+        }
+      : null;
 
     return {
       id: String(item.id || generateId()),
       url: normalizedUrl || "",
       name: String(item.name || normalizedUrl || ""),
+      folder: normalizeFolderName(item.folder),
+      thumbUrl: normalizeAssetUrl(item.thumbUrl, normalizedUrl || ""),
+      faviconUrl: normalizeAssetUrl(item.faviconUrl, normalizedUrl || ""),
       tags: parseTags(Array.isArray(item.tags) ? item.tags.join(" ") : String(item.tags || "")),
       desc: String(item.desc || ""),
       createdAt,
@@ -1153,7 +1870,8 @@
       pinned: !!item.pinned,
       visitCount: toSafeNumber(item.visitCount, 0),
       visitedAt: item.visitedAt ? toSafeNumber(item.visitedAt, null) : null,
-      domain: extractDomain(normalizedUrl || "")
+      domain: extractDomain(normalizedUrl || ""),
+      reader: normalizedReader
     };
   }
 
@@ -1645,8 +2363,8 @@
 
     const method = fileId ? "PATCH" : "POST";
     const endpoint = fileId
-      ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=multipart`
-      : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
+      ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=multipart&fields=id,modifiedTime`
+      : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime";
 
     const response = await driveFetch(
       endpoint,
@@ -1664,29 +2382,134 @@
     return response.json();
   }
 
+  function isDriveFileMissingError(error) {
+    const message = error instanceof Error ? error.message : String(error || "");
+    return (
+      message.includes("HTTP 404") ||
+      message.includes("notFound") ||
+      message.includes("File not found")
+    );
+  }
+
+  function shouldSkipAutoSyncForMassDeletion(localData, remoteData, mergedData) {
+    const localCount = Array.isArray(localData?.bookmarks) ? localData.bookmarks.length : 0;
+    const remoteCount = Array.isArray(remoteData?.bookmarks) ? remoteData.bookmarks.length : 0;
+    const mergedCount = Array.isArray(mergedData?.bookmarks) ? mergedData.bookmarks.length : 0;
+
+    const baseline = Math.max(localCount, remoteCount);
+    if (baseline < AUTO_SYNC_MASS_DELETE_MIN_ITEMS) {
+      return false;
+    }
+
+    const removedFromLocal = localCount - mergedCount;
+    const removedFromRemote = remoteCount - mergedCount;
+    if (removedFromLocal <= 0 && removedFromRemote <= 0) {
+      return false;
+    }
+
+    return mergedCount <= Math.floor(baseline * AUTO_SYNC_MASS_DELETE_RATIO);
+  }
+
   async function syncWithDrive(options = {}) {
     const authOptions = {
       interactive: options.interactive !== false
     };
+    const safeMode = options.safeMode === true;
+    const mode = options.mode === "autoFast" ? "autoFast" : "full";
+
+    if (mode === "autoFast") {
+      return syncWithDriveAutoFast(authOptions, safeMode);
+    }
+
+    return syncWithDriveFull(authOptions, safeMode);
+  }
+
+  async function syncWithDriveAutoFast(authOptions, safeMode) {
+    const cache = getDriveSyncCache();
+    if (!cache.fileId) {
+      return syncWithDriveFull(authOptions, safeMode);
+    }
+
     const local = getData();
-    const remoteFile = await findDriveFile(authOptions);
+    local.updatedAt = Date.now();
+    saveData(local, { touch: false });
+
+    try {
+      const uploaded = await uploadDriveData(local, cache.fileId, authOptions);
+      if (!uploaded?.id) {
+        throw new Error("Drive 파일 저장에 실패했습니다");
+      }
+
+      saveDriveSyncCache({
+        fileId: uploaded.id,
+        lastFastSyncAt: Date.now()
+      });
+      return { skipped: false };
+    } catch (error) {
+      if (isDriveFileMissingError(error)) {
+        clearDriveSyncCache();
+        return syncWithDriveFull(authOptions, safeMode);
+      }
+      throw error;
+    }
+  }
+
+  async function syncWithDriveFull(authOptions, safeMode) {
+    const local = getData();
+    const cache = getDriveSyncCache();
 
     let merged = local;
-    let fileId = null;
+    let fileId = cache.fileId || "";
+    let remoteData = null;
 
-    if (remoteFile) {
-      fileId = remoteFile.id;
-      const remoteData = await downloadDriveData(fileId, authOptions);
+    if (fileId) {
+      try {
+        remoteData = await downloadDriveData(fileId, authOptions);
+      } catch (error) {
+        if (isDriveFileMissingError(error)) {
+          clearDriveSyncCache();
+          fileId = "";
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    if (!remoteData) {
+      const remoteFile = await findDriveFile(authOptions);
+      if (remoteFile?.id) {
+        fileId = remoteFile.id;
+        saveDriveSyncCache({ fileId });
+        remoteData = await downloadDriveData(fileId, authOptions);
+      }
+    }
+
+    if (remoteData) {
       merged = mergeData(local, remoteData);
+    }
+
+    if (safeMode && remoteData && shouldSkipAutoSyncForMassDeletion(local, remoteData, merged)) {
+      return {
+        skipped: true,
+        message: "자동 동기화 안전모드: 대량 삭제 가능성이 감지되어 중단했습니다. 설정에서 수동 동기화를 실행해 확인해주세요."
+      };
     }
 
     merged.updatedAt = Date.now();
     saveData(merged, { touch: false });
 
-    const uploaded = await uploadDriveData(merged, fileId, authOptions);
+    const uploaded = await uploadDriveData(merged, fileId || null, authOptions);
     if (!uploaded?.id) {
       throw new Error("Drive 파일 저장에 실패했습니다");
     }
+
+    saveDriveSyncCache({
+      fileId: uploaded.id,
+      lastFullSyncAt: Date.now(),
+      lastFastSyncAt: Date.now()
+    });
+
+    return { skipped: false };
   }
 
   async function uploadLocalToDrive() {
@@ -1700,6 +2523,11 @@
     if (!uploaded?.id) {
       throw new Error("Drive 파일 업로드에 실패했습니다");
     }
+
+    saveDriveSyncCache({
+      fileId: uploaded.id,
+      lastFastSyncAt: Date.now()
+    });
   }
 
   async function downloadDriveToLocal() {
@@ -1710,6 +2538,11 @@
 
     const remoteData = await downloadDriveData(remoteFile.id);
     saveData(remoteData, { touch: false });
+    saveDriveSyncCache({
+      fileId: remoteFile.id,
+      lastFullSyncAt: Date.now(),
+      lastFastSyncAt: Date.now()
+    });
     return true;
   }
 })();
