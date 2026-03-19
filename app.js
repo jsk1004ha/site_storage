@@ -43,6 +43,19 @@
 
   const DRIVE_FILE_NAME = "remember-sync-v2.json";
   const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
+  const GOOGLE_TOKEN_DURATION_DAY = "1d";
+  const GOOGLE_TOKEN_DURATION_WEEK = "1w";
+  const GOOGLE_TOKEN_DURATION_MONTH = "1m";
+  const GOOGLE_TOKEN_DURATION_QUARTER = "3m";
+  const GOOGLE_TOKEN_DURATION_YEAR = "1y";
+  const GOOGLE_TOKEN_DURATION_DEFAULT = GOOGLE_TOKEN_DURATION_WEEK;
+  const GOOGLE_TOKEN_DURATION_MS = {
+    [GOOGLE_TOKEN_DURATION_DAY]: 24 * 60 * 60 * 1000,
+    [GOOGLE_TOKEN_DURATION_WEEK]: 7 * 24 * 60 * 60 * 1000,
+    [GOOGLE_TOKEN_DURATION_MONTH]: 30 * 24 * 60 * 60 * 1000,
+    [GOOGLE_TOKEN_DURATION_QUARTER]: 90 * 24 * 60 * 60 * 1000,
+    [GOOGLE_TOKEN_DURATION_YEAR]: 365 * 24 * 60 * 60 * 1000
+  };
 
   let selectedTags = [];
   let selectedFolder = "";
@@ -176,6 +189,7 @@
   const drivePushBtn = byId("drivePushBtn");
   const drivePullBtn = byId("drivePullBtn");
   const googleClientIdInput = byId("googleClientIdInput");
+  const googleTokenDurationSelect = byId("googleTokenDurationSelect");
   const saveGoogleConfigBtn = byId("saveGoogleConfigBtn");
   const clearGoogleConfigBtn = byId("clearGoogleConfigBtn");
 
@@ -855,6 +869,7 @@
 
     saveGoogleConfigBtn?.addEventListener("click", () => {
       const clientId = (googleClientIdInput?.value || "").trim();
+      const tokenDuration = normalizeGoogleTokenDuration(googleTokenDurationSelect?.value);
       if (!clientId) {
         alert("OAuth Client ID를 입력해주세요");
         return;
@@ -864,12 +879,15 @@
         return;
       }
 
-      saveGoogleConfig(clientId);
+      saveGoogleConfig({
+        clientId,
+        tokenDuration
+      });
       clearGoogleToken();
       clearDriveSyncCache();
       cancelAutoSync();
       refreshDriveStatus();
-      showToast("Client ID를 저장했습니다");
+      showToast("OAuth 설정을 저장했습니다");
     });
 
     clearGoogleConfigBtn?.addEventListener("click", () => {
@@ -882,6 +900,9 @@
       cancelAutoSync();
       if (googleClientIdInput) {
         googleClientIdInput.value = "";
+      }
+      if (googleTokenDurationSelect) {
+        googleTokenDurationSelect.value = GOOGLE_TOKEN_DURATION_DEFAULT;
       }
       refreshDriveStatus();
       showToast("Google 설정을 초기화했습니다");
@@ -970,6 +991,9 @@
     const config = getGoogleConfig();
     if (googleClientIdInput && config.clientId) {
       googleClientIdInput.value = config.clientId;
+    }
+    if (googleTokenDurationSelect) {
+      googleTokenDurationSelect.value = config.tokenDuration;
     }
   }
 
@@ -1547,7 +1571,7 @@
       closeSidePanelOnCompact();
     });
 
-    appendSuggestion("한달 이상 안 본", () => {
+    appendSuggestion("30일 이상 안 본", () => {
       smartFilter = "stale30";
       searchInput.value = "";
       selectedTags = [];
@@ -4268,24 +4292,34 @@
   function getGoogleConfig() {
     const raw = localStorage.getItem(GOOGLE_CONFIG_KEY);
     if (!raw) {
-      return { clientId: "" };
+      return {
+        clientId: "",
+        tokenDuration: GOOGLE_TOKEN_DURATION_DEFAULT
+      };
     }
 
     try {
       const parsed = JSON.parse(raw);
       return {
-        clientId: String(parsed.clientId || "").trim()
+        clientId: String(parsed.clientId || "").trim(),
+        tokenDuration: normalizeGoogleTokenDuration(parsed.tokenDuration)
       };
     } catch (_error) {
-      return { clientId: "" };
+      return {
+        clientId: "",
+        tokenDuration: GOOGLE_TOKEN_DURATION_DEFAULT
+      };
     }
   }
 
-  function saveGoogleConfig(clientId) {
+  function saveGoogleConfig(config) {
+    const clientId = String(config?.clientId || "").trim();
+    const tokenDuration = normalizeGoogleTokenDuration(config?.tokenDuration);
     localStorage.setItem(
       GOOGLE_CONFIG_KEY,
       JSON.stringify({
-        clientId: clientId.trim()
+        clientId,
+        tokenDuration
       })
     );
     mirrorLocalStorageKeyToExtensionStorage(GOOGLE_CONFIG_KEY);
@@ -4321,7 +4355,10 @@
 
   function saveGoogleToken(accessToken, expiresInSeconds) {
     const safeExpires = Math.max(120, toSafeNumber(expiresInSeconds, 3600));
-    const expiresAt = Date.now() + (safeExpires - 60) * 1000;
+    const config = getGoogleConfig();
+    const configuredExpiresMs = getGoogleTokenDurationMs(config.tokenDuration);
+    const oauthExpiresMs = Math.max(60000, (safeExpires - 60) * 1000);
+    const expiresAt = Date.now() + Math.max(configuredExpiresMs, oauthExpiresMs);
     localStorage.setItem(
       GOOGLE_TOKEN_KEY,
       JSON.stringify({
@@ -4336,6 +4373,25 @@
   function clearGoogleToken() {
     localStorage.removeItem(GOOGLE_TOKEN_KEY);
     mirrorLocalStorageKeyToExtensionStorage(GOOGLE_TOKEN_KEY);
+  }
+
+  function normalizeGoogleTokenDuration(value) {
+    const normalized = String(value || "").trim();
+    if (
+      normalized === GOOGLE_TOKEN_DURATION_DAY ||
+      normalized === GOOGLE_TOKEN_DURATION_WEEK ||
+      normalized === GOOGLE_TOKEN_DURATION_MONTH ||
+      normalized === GOOGLE_TOKEN_DURATION_QUARTER ||
+      normalized === GOOGLE_TOKEN_DURATION_YEAR
+    ) {
+      return normalized;
+    }
+    return GOOGLE_TOKEN_DURATION_DEFAULT;
+  }
+
+  function getGoogleTokenDurationMs(tokenDuration) {
+    const normalized = normalizeGoogleTokenDuration(tokenDuration);
+    return GOOGLE_TOKEN_DURATION_MS[normalized] || GOOGLE_TOKEN_DURATION_MS[GOOGLE_TOKEN_DURATION_DEFAULT];
   }
 
   async function ensureGoogleToken(options = {}) {

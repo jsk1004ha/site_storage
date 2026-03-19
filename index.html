@@ -146,6 +146,14 @@
           <summary>OAuth 설정</summary>
           <label for="googleClientIdInput">Google OAuth Client ID</label>
           <input id="googleClientIdInput" type="text" placeholder="xxxx.apps.googleusercontent.com" />
+          <label for="googleTokenDurationSelect">토큰 만료 기간</label>
+          <select id="googleTokenDurationSelect">
+            <option value="1d">1일</option>
+            <option value="1w" selected>7일</option>
+            <option value="1m">30일</option>
+            <option value="3m">3개월</option>
+            <option value="1y">1년</option>
+          </select>
           <div class="drive-settings-actions">
             <button id="saveGoogleConfigBtn" type="button">Client ID 저장</button>
             <button id="clearGoogleConfigBtn" type="button">초기화</button>

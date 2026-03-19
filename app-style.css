@@ -695,7 +695,8 @@ header {
   font-size: 0.8rem;
 }
 
-.drive-settings input {
+.drive-settings input,
+.drive-settings select {
   width: 100%;
   border: 1px solid var(--gray-200);
   border-radius: 0.65rem;
@@ -1565,7 +1566,8 @@ body[data-theme="dark"] .controls input[type="text"],
 body[data-theme="dark"] .controls select,
 body[data-theme="dark"] .sheet input,
 body[data-theme="dark"] .sheet textarea,
-body[data-theme="dark"] .drive-settings input {
+body[data-theme="dark"] .drive-settings input,
+body[data-theme="dark"] .drive-settings select {
   background: #111827;
   border-color: #334155;
   color: #e2e8f0;
