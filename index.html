@@ -52,19 +52,107 @@
     <div id="sideBackdrop" class="side-backdrop" hidden></div>
 
     <div class="main-panel">
-      <header>
-        <div class="controls">
+      <header class="workspace-header">
+        <section class="workspace-hero">
+          <div class="workspace-hero-copy">
+            <p class="workspace-kicker">Remember Workspace</p>
+            <h2>저장보다 다시 찾기에 집중한 사이트 아카이브</h2>
+            <p class="workspace-summary">
+              폴더, 태그, 읽기 모드, Drive 동기화를 하나의 흐름으로 묶어 자주 다시 찾는 링크를
+              더 빠르게 저장하고 정리하고 복구할 수 있게 돕습니다.
+            </p>
+            <div class="workspace-hero-actions">
+              <button id="heroAddSiteBtn" class="hero-primary-btn" type="button">새 사이트 추가</button>
+              <button id="heroFocusSearchBtn" class="hero-secondary-btn" type="button">검색 바로가기</button>
+              <button id="heroOpenSettingsBtn" class="hero-secondary-btn" type="button">설정/동기화</button>
+              <button id="heroBackupBtn" class="hero-secondary-btn" type="button">백업 다운로드</button>
+            </div>
+          </div>
+          <div class="workspace-hero-stats" aria-label="컬렉션 요약">
+            <article class="hero-stat-card">
+              <span>저장 사이트</span>
+              <strong id="heroBookmarkCount">0</strong>
+              <small>현재 보관 중인 링크 수</small>
+            </article>
+            <article class="hero-stat-card">
+              <span>폴더 구조</span>
+              <strong id="heroFolderCount">0</strong>
+              <small>정리된 분류 개수</small>
+            </article>
+            <article class="hero-stat-card">
+              <span>활성 태그</span>
+              <strong id="heroTagCount">0</strong>
+              <small>탐색 가능한 태그 수</small>
+            </article>
+            <article class="hero-stat-card">
+              <span>Drive 상태</span>
+              <strong id="heroSyncStatus">미연결</strong>
+              <small id="heroSyncDetail">최근 동기화 기록 없음</small>
+              <small id="heroSelectionCount">현재 0개 표시</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="workspace-shortcuts" aria-label="빠른 작업">
+          <article class="shortcut-card">
+            <span class="shortcut-label">빠르게 찾기</span>
+            <h3>자주 쓰는 뷰를 한 번에 전환하세요</h3>
+            <p>최근 추가, 최근 방문, 자주 방문, 오래 안 본 링크를 빠르게 불러와 정리 속도를 높입니다.</p>
+            <div class="shortcut-chip-group">
+              <button type="button" data-workspace-preset="recentAdd">최근 추가</button>
+              <button type="button" data-workspace-preset="recentVisit">최근 방문</button>
+              <button type="button" data-workspace-preset="frequent">자주 방문</button>
+              <button type="button" data-workspace-preset="stale30">30일 이상 안 봄</button>
+            </div>
+          </article>
+          <article class="shortcut-card">
+            <span class="shortcut-label">바로 실행</span>
+            <h3>관리 작업을 설정까지 들어가지 않고 시작합니다</h3>
+            <p>동기화 확인, 백업, 죽은 링크 점검 같은 유지관리 작업을 더 빨리 꺼낼 수 있습니다.</p>
+            <div class="shortcut-chip-group">
+              <button id="heroDriveActionBtn" type="button">Drive 동기화</button>
+              <button id="heroCheckLinksBtn" type="button">죽은 링크 점검</button>
+              <button id="heroOpenSettingsPanelBtn" type="button">설정 열기</button>
+            </div>
+          </article>
+          <article class="shortcut-card">
+            <span class="shortcut-label">검색 팁</span>
+            <h3>고급 검색 문법도 바로 떠올릴 수 있게</h3>
+            <p>검색창에서 아래 예시를 그대로 써서 원하는 링크만 더 빠르게 좁혀보세요.</p>
+            <div class="search-tip-list" aria-label="검색 예시">
+              <span>site:github.com</span>
+              <span>folder:읽기</span>
+              <span>#design</span>
+              <span>has:reader</span>
+              <span>is:broken</span>
+            </div>
+          </article>
+        </section>
+
+        <section class="controls-panel">
+          <div class="controls-heading">
+            <div>
+              <p class="section-eyebrow">Collection Console</p>
+              <h2>필터와 보기 모드를 조합해 원하는 링크를 빠르게 찾으세요</h2>
+            </div>
+            <div class="results-summary" aria-live="polite">
+              <strong id="resultsCountLabel">0개 표시</strong>
+              <span id="resultsContextLabel">전체 컬렉션</span>
+              <em id="activeViewBadge" class="active-view-badge">매거진 보기</em>
+            </div>
+          </div>
+          <div class="controls">
           <button id="openSidePanelBtn" class="menu-btn" type="button" data-tooltip="사이드바 열기">☰</button>
           <div class="search-wrap">
             <span class="search-icon" aria-hidden="true">&#128269;</span>
-            <input type="text" id="searchInput" placeholder="검색어를 입력해주세요" />
+            <input type="text" id="searchInput" placeholder="검색 / #태그 / folder: / site:" />
           </div>
-          <select id="sortSelect" hidden>
+          <select id="sortSelect" aria-label="정렬 기준">
             <option value="recentAdd">최근 추가</option>
             <option value="recentVisit">최근 방문</option>
             <option value="frequent">자주 방문</option>
           </select>
-          <select id="folderFilterSelect" hidden>
+          <select id="folderFilterSelect" aria-label="폴더 빠른 필터">
             <option value="">전체 폴더</option>
           </select>
           <div class="view-toggle" id="viewToggle">
@@ -72,18 +160,61 @@
             <button type="button" data-view-mode="list">리스트</button>
             <button type="button" data-view-mode="magazine" class="active">매거진</button>
           </div>
-        </div>
+          </div>
+          <div class="search-guidance" aria-label="검색 도움말">
+            <div class="search-guidance-copy">
+              <strong>바로 쓰는 검색</strong>
+              <span>예시 버튼을 눌러 검색창에 넣고 바로 좁혀보세요.</span>
+            </div>
+            <div class="search-shortcuts">
+              <button type="button" data-search-snippet="#태그 ">#태그</button>
+              <button type="button" data-search-snippet="folder:">folder:</button>
+              <button type="button" data-search-snippet="site:">site:</button>
+              <button type="button" data-search-snippet="is:pinned">is:pinned</button>
+              <button type="button" data-search-snippet="has:reader">has:reader</button>
+            </div>
+            <button id="clearFiltersBtn" class="search-reset-btn" type="button">필터 초기화</button>
+          </div>
+          <div id="activeFiltersBar" class="active-filters" hidden aria-live="polite"></div>
+        </section>
       </header>
 
       <main>
         <section id="bulkBar" class="bulk-bar" hidden>
-          <span id="bulkCount">0개 선택됨</span>
-          <button id="bulkToggleVisibleBtn" type="button">현재 목록 전체 선택</button>
-          <button id="bulkMoveFolderBtn" type="button">폴더 이동</button>
-          <button id="bulkAddTagBtn" type="button">태그 추가</button>
-          <button id="bulkRemoveTagBtn" type="button">태그 제거</button>
-          <button id="bulkDeleteBtn" type="button" class="danger">선택 삭제</button>
-          <button id="bulkClearBtn" type="button">선택 해제</button>
+          <div class="bulk-bar-top">
+            <div class="bulk-summary">
+              <span id="bulkCount">0개 선택됨</span>
+              <small id="bulkSelectionHint">선택한 항목을 한 번에 정리합니다.</small>
+            </div>
+            <div class="bulk-actions-row">
+              <button id="bulkToggleVisibleBtn" type="button">현재 목록 전체 선택</button>
+              <button id="bulkDeleteBtn" type="button" class="danger">선택 삭제</button>
+              <button id="bulkClearBtn" type="button">선택 해제</button>
+            </div>
+          </div>
+          <div class="bulk-inline-editors">
+            <label class="bulk-inline-field" for="bulkFolderInput">
+              <span>폴더 이동</span>
+              <input
+                id="bulkFolderInput"
+                type="text"
+                list="folderSuggestions"
+                placeholder="이동할 폴더를 입력하세요"
+              />
+            </label>
+            <button id="bulkMoveFolderBtn" type="button">폴더 적용</button>
+            <label class="bulk-inline-field bulk-inline-field-tags" for="bulkTagsInput">
+              <span>태그 편집</span>
+              <input
+                id="bulkTagsInput"
+                type="text"
+                list="tagSuggestions"
+                placeholder="태그를 입력하고 추가/제거를 선택하세요"
+              />
+            </label>
+            <button id="bulkAddTagBtn" type="button">태그 추가</button>
+            <button id="bulkRemoveTagBtn" type="button">태그 제거</button>
+          </div>
         </section>
         <section id="cardsContainer"></section>
       </main>
@@ -195,6 +326,7 @@
   <div class="sheet-overlay" id="sheetOverlay">
     <div class="sheet" id="sheet">
       <div class="sheet-header" id="sheetTitle">새 사이트 추가</div>
+      <div class="sheet-progress" id="sheetProgress">1 / 2 단계 · URL 입력</div>
       <div class="field-group" id="step1">
         <label for="siteUrl">URL</label>
         <input type="url" id="siteUrl" placeholder="https://example.com" required />
@@ -222,7 +354,7 @@
             <span></span>
           </div>
         </div>
-        <p class="metadata-hint" id="metadataHint">URL 입력 시 Open Graph 메타데이터를 자동 추출합니다.</p>
+        <p class="metadata-hint" id="metadataHint">1단계에서 URL을 확인하면 2단계에서 제목·폴더·태그를 바로 정리할 수 있어요.</p>
         <label for="siteName">사이트 이름</label>
         <input type="text" id="siteName" placeholder="사이트 이름" />
         <label for="siteFolder">폴더</label>
@@ -244,6 +376,26 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="action-dialog-overlay" id="actionDialogOverlay" hidden>
+    <section class="action-dialog" role="dialog" aria-modal="true" aria-labelledby="actionDialogTitle">
+      <div class="action-dialog-head">
+        <div>
+          <p id="actionDialogEyebrow" class="action-dialog-eyebrow">선택한 항목 작업</p>
+          <h2 id="actionDialogTitle">작업 확인</h2>
+        </div>
+        <button id="actionDialogCloseBtn" type="button" class="action-dialog-close">닫기</button>
+      </div>
+      <p id="actionDialogDescription" class="action-dialog-description"></p>
+      <label id="actionDialogLabel" for="actionDialogInput">입력</label>
+      <input id="actionDialogInput" type="text" />
+      <p id="actionDialogSummary" class="action-dialog-summary"></p>
+      <div class="action-dialog-actions">
+        <button id="actionDialogCancelBtn" type="button" class="btn-secondary">취소</button>
+        <button id="actionDialogConfirmBtn" type="button" class="btn-primary">확인</button>
+      </div>
+    </section>
   </div>
 
   <datalist id="folderSuggestions"></datalist>

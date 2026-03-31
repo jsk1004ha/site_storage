@@ -99,6 +99,7 @@
   let folderMetaMap = {};
   let lastScrollY = 0;
   let ctaHiddenByScroll = false;
+  let pendingActionDialog = null;
 
   const searchInput = byId("searchInput");
   const sortSelect = byId("sortSelect");
@@ -174,6 +175,42 @@
   const closeSettingsBtn = byId("closeSettingsBtn");
   const themeModeHint = byId("themeModeHint");
   const themeModeButtons = Array.from(document.querySelectorAll("[data-theme-mode]"));
+  const heroAddSiteBtn = byId("heroAddSiteBtn");
+  const heroFocusSearchBtn = byId("heroFocusSearchBtn");
+  const heroOpenSettingsBtn = byId("heroOpenSettingsBtn");
+  const heroBackupBtn = byId("heroBackupBtn");
+  const heroDriveActionBtn = byId("heroDriveActionBtn");
+  const heroCheckLinksBtn = byId("heroCheckLinksBtn");
+  const heroOpenSettingsPanelBtn = byId("heroOpenSettingsPanelBtn");
+  const heroBookmarkCount = byId("heroBookmarkCount");
+  const heroFolderCount = byId("heroFolderCount");
+  const heroTagCount = byId("heroTagCount");
+  const heroSyncStatus = byId("heroSyncStatus");
+  const heroSyncDetail = byId("heroSyncDetail");
+  const heroSelectionCount = byId("heroSelectionCount");
+  const resultsCountLabel = byId("resultsCountLabel");
+  const resultsContextLabel = byId("resultsContextLabel");
+  const activeViewBadge = byId("activeViewBadge");
+  const activeFiltersBar = byId("activeFiltersBar");
+  const workspacePresetButtons = Array.from(
+    document.querySelectorAll("[data-workspace-preset]")
+  );
+  const searchShortcutButtons = Array.from(document.querySelectorAll("[data-search-snippet]"));
+  const clearFiltersBtn = byId("clearFiltersBtn");
+  const bulkSelectionHint = byId("bulkSelectionHint");
+  const bulkFolderInput = byId("bulkFolderInput");
+  const bulkTagsInput = byId("bulkTagsInput");
+  const sheetProgress = byId("sheetProgress");
+  const actionDialogOverlay = byId("actionDialogOverlay");
+  const actionDialogEyebrow = byId("actionDialogEyebrow");
+  const actionDialogTitle = byId("actionDialogTitle");
+  const actionDialogDescription = byId("actionDialogDescription");
+  const actionDialogLabel = byId("actionDialogLabel");
+  const actionDialogInput = byId("actionDialogInput");
+  const actionDialogSummary = byId("actionDialogSummary");
+  const actionDialogCloseBtn = byId("actionDialogCloseBtn");
+  const actionDialogCancelBtn = byId("actionDialogCancelBtn");
+  const actionDialogConfirmBtn = byId("actionDialogConfirmBtn");
 
   const readerOverlay = byId("readerOverlay");
   const readerCloseBtn = byId("readerCloseBtn");
@@ -210,6 +247,15 @@
 
   function byId(id) {
     return document.getElementById(id);
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
   }
 
   function registerWebServiceWorker() {
@@ -347,6 +393,267 @@
       const mode = button.dataset.viewMode;
       button.classList.toggle("active", mode === currentViewMode);
     });
+  }
+
+  function getViewModeLabel(mode) {
+    if (mode === "grid") {
+      return "그리드 보기";
+    }
+    if (mode === "list") {
+      return "리스트 보기";
+    }
+    return "매거진 보기";
+  }
+
+  function getSortLabel(mode) {
+    if (mode === "recentVisit") {
+      return "최근 방문";
+    }
+    if (mode === "frequent") {
+      return "자주 방문";
+    }
+    return "최근 추가";
+  }
+
+  function getSmartFilterLabel(mode) {
+    if (mode === "stale30") {
+      return "30일 이상 안 본";
+    }
+    return "";
+  }
+
+  function getLatestSyncAt() {
+    const cache = getDriveSyncCache();
+    return Math.max(cache.lastFullSyncAt || 0, cache.lastFastSyncAt || 0);
+  }
+
+  function formatRelativeTime(timestamp) {
+    const safeTimestamp = toSafeNumber(timestamp, 0);
+    if (!safeTimestamp) {
+      return "최근 동기화 기록 없음";
+    }
+
+    const elapsedMs = Math.max(0, Date.now() - safeTimestamp);
+    const minutes = Math.floor(elapsedMs / (60 * 1000));
+    if (minutes < 1) {
+      return "방금 전";
+    }
+    if (minutes < 60) {
+      return `${minutes}분 전`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+      return `${hours}시간 전`;
+    }
+
+    const days = Math.floor(hours / 24);
+    if (days < 7) {
+      return `${days}일 전`;
+    }
+
+    return new Date(safeTimestamp).toLocaleDateString("ko-KR", {
+      month: "short",
+      day: "numeric"
+    });
+  }
+
+  function applyWorkspacePreset(mode) {
+    smartFilter = mode === "stale30" ? "stale30" : "";
+    searchInput.value = "";
+    selectedTags = [];
+    selectedFolder = "";
+    currentSort =
+      mode === "recentVisit" ? "recentVisit" : mode === "frequent" ? "frequent" : "recentAdd";
+    sortSelect.value = currentSort;
+    renderBookmarks();
+    renderTagFilters();
+    renderFolderFilters();
+    closeSidePanelOnCompact();
+  }
+
+  function resetCollectionFilters(options = {}) {
+    const keepQuery = !!options.keepQuery;
+    if (!keepQuery) {
+      searchInput.value = "";
+    }
+    smartFilter = "";
+    selectedTags = [];
+    selectedFolder = "";
+    currentSort = "recentAdd";
+    sortSelect.value = currentSort;
+    if (folderFilterSelect) {
+      folderFilterSelect.value = "";
+    }
+    tagSearchKeyword = "";
+    if (tagSearchInput) {
+      tagSearchInput.value = "";
+    }
+    renderBookmarks();
+    renderTagFilters();
+    renderFolderFilters();
+    closeSidePanelOnCompact();
+  }
+
+  function insertSearchSnippet(snippet) {
+    const safeSnippet = String(snippet || "").trim();
+    if (!safeSnippet) {
+      return;
+    }
+    const currentValue = (searchInput.value || "").trim();
+    searchInput.value = currentValue ? `${currentValue} ${safeSnippet}` : safeSnippet;
+    smartFilter = "";
+    renderBookmarks();
+    searchInput.focus();
+    searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+  }
+
+  function renderActiveFilters() {
+    if (!activeFiltersBar) {
+      return;
+    }
+
+    const filters = [];
+    const query = (searchInput?.value || "").trim();
+    if (query) {
+      filters.push({ type: "query", label: "검색", value: query });
+    }
+    if (selectedFolder) {
+      filters.push({ type: "folder", label: "폴더", value: selectedFolder });
+    }
+    selectedTags.forEach((tag) => {
+      filters.push({ type: "tag", label: "태그", value: tag });
+    });
+    if (smartFilter) {
+      filters.push({
+        type: "smartFilter",
+        label: "스마트 뷰",
+        value: getSmartFilterLabel(smartFilter) || smartFilter
+      });
+    } else if (currentSort !== "recentAdd") {
+      filters.push({ type: "sort", label: "정렬", value: getSortLabel(currentSort) });
+    }
+
+    if (!filters.length) {
+      activeFiltersBar.hidden = true;
+      activeFiltersBar.innerHTML = "";
+      return;
+    }
+
+    activeFiltersBar.hidden = false;
+    activeFiltersBar.innerHTML = "";
+
+    const label = document.createElement("span");
+    label.className = "active-filters-label";
+    label.textContent = "현재 필터";
+    activeFiltersBar.appendChild(label);
+
+    const list = document.createElement("div");
+    list.className = "active-filter-list";
+
+    filters.forEach((filter) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "active-filter-chip";
+      chip.innerHTML = `<strong>${escapeHtml(filter.label)}</strong><span>${escapeHtml(filter.value)}</span><span aria-hidden="true">×</span>`;
+      chip.addEventListener("click", () => {
+        if (filter.type === "query" && searchInput) {
+          searchInput.value = "";
+        } else if (filter.type === "folder") {
+          selectedFolder = "";
+          if (folderFilterSelect) {
+            folderFilterSelect.value = "";
+          }
+          renderFolderFilters();
+        } else if (filter.type === "tag") {
+          selectedTags = selectedTags.filter((tag) => tag !== filter.value);
+          renderTagFilters();
+        } else if (filter.type === "smartFilter") {
+          smartFilter = "";
+        } else if (filter.type === "sort") {
+          currentSort = "recentAdd";
+          sortSelect.value = currentSort;
+        }
+        renderBookmarks();
+      });
+      list.appendChild(chip);
+    });
+
+    activeFiltersBar.appendChild(list);
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "active-filters-clear";
+    clearButton.textContent = "모두 지우기";
+    clearButton.addEventListener("click", () => {
+      resetCollectionFilters();
+    });
+    activeFiltersBar.appendChild(clearButton);
+  }
+
+  function updateWorkspaceSummary(visibleCount = currentRenderItems.length) {
+    const bookmarks = getBookmarks();
+    const folderCount = new Set(
+      bookmarks.map((item) => normalizeFolderName(item.folder || "")).filter(Boolean)
+    ).size;
+    const tagCount = new Set(bookmarks.flatMap((item) => item.tags || [])).size;
+    const query = (searchInput?.value || "").trim();
+    const contextBits = [];
+
+    if (query) {
+      contextBits.push(`검색: "${query}"`);
+    }
+    if (selectedFolder) {
+      contextBits.push(`폴더: ${selectedFolder}`);
+    }
+    if (selectedTags.length) {
+      contextBits.push(`태그: ${selectedTags.join(", ")}`);
+    }
+    if (smartFilter) {
+      contextBits.push(`스마트 뷰: ${getSmartFilterLabel(smartFilter) || smartFilter}`);
+    } else if (currentSort !== "recentAdd") {
+      contextBits.push(`정렬: ${getSortLabel(currentSort)}`);
+    }
+
+    if (heroBookmarkCount) {
+      heroBookmarkCount.textContent = String(bookmarks.length);
+    }
+    if (heroFolderCount) {
+      heroFolderCount.textContent = String(folderCount);
+    }
+    if (heroTagCount) {
+      heroTagCount.textContent = String(tagCount);
+    }
+    if (heroSyncStatus) {
+      heroSyncStatus.textContent = driveStatusEl?.textContent || "미연결";
+    }
+    if (heroSyncDetail) {
+      const lastSyncAt = getLatestSyncAt();
+      if (syncInFlight) {
+        heroSyncDetail.textContent = "Drive와 동기화 중";
+      } else if (lastSyncAt) {
+        heroSyncDetail.textContent = `마지막 동기화 ${formatRelativeTime(lastSyncAt)}`;
+      } else if (getStoredGoogleToken()) {
+        heroSyncDetail.textContent = "연결됨 · 아직 동기화 전";
+      } else {
+        heroSyncDetail.textContent = "최근 동기화 기록 없음";
+      }
+    }
+    if (heroSelectionCount) {
+      heroSelectionCount.textContent =
+        selectedBookmarkIds.size > 0
+          ? `${selectedBookmarkIds.size}개 선택됨`
+          : `현재 ${visibleCount}개 표시`;
+    }
+    if (resultsCountLabel) {
+      resultsCountLabel.textContent = `${visibleCount}개 표시`;
+    }
+    if (resultsContextLabel) {
+      resultsContextLabel.textContent = contextBits.join(" · ") || "전체 컬렉션";
+    }
+    if (activeViewBadge) {
+      activeViewBadge.textContent = getViewModeLabel(currentViewMode);
+    }
   }
 
   function applyTheme() {
@@ -723,12 +1030,46 @@
       renderBookmarks();
     });
 
+    searchShortcutButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        insertSearchSnippet(button.dataset.searchSnippet);
+      });
+    });
+
+    clearFiltersBtn?.addEventListener("click", () => {
+      resetCollectionFilters();
+    });
+
+    workspacePresetButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        applyWorkspacePreset(button.dataset.workspacePreset || "");
+      });
+    });
+
+    heroFocusSearchBtn?.addEventListener("click", () => {
+      searchInput.focus();
+      searchInput.select();
+    });
+    heroBackupBtn?.addEventListener("click", exportData);
+    heroDriveActionBtn?.addEventListener("click", () => {
+      runDriveTask(async () => {
+        await syncWithDrive();
+        render();
+        showToast("양방향 동기화 완료");
+      });
+    });
+    heroCheckLinksBtn?.addEventListener("click", () => {
+      runDeadLinkCheckBatch({ force: true, full: true }).catch(() => {});
+    });
+    heroOpenSettingsPanelBtn?.addEventListener("click", openSettings);
+
     cancelBtn1?.addEventListener("click", closeSheet);
 
     backBtn?.addEventListener("click", () => {
       if (sheetMode === "add") {
         step1.classList.add("active");
         step2.classList.remove("active");
+        updateSheetProgress(1);
       } else {
         closeSheet();
       }
@@ -750,6 +1091,7 @@
 
       step1.classList.remove("active");
       step2.classList.add("active");
+      updateSheetProgress(2);
     });
 
     siteUrlInput?.addEventListener("blur", () => {
@@ -762,7 +1104,16 @@
 
     saveBtn?.addEventListener("click", saveBookmarkFromSheet);
     openSheetBtn?.addEventListener("click", openAdd);
+    heroAddSiteBtn?.addEventListener("click", openAdd);
+    heroFocusSearchBtn?.addEventListener("click", focusSearchInput);
     openSettingsBtn?.addEventListener("click", openSettings);
+    heroOpenSettingsBtn?.addEventListener("click", openSettings);
+    heroOpenSettingsPanelBtn?.addEventListener("click", openSettings);
+    heroBackupBtn?.addEventListener("click", exportData);
+    heroDriveActionBtn?.addEventListener("click", () => driveSyncBtn?.click());
+    heroCheckLinksBtn?.addEventListener("click", () => {
+      runDeadLinkCheckBatch({ force: true, full: true }).catch(() => {});
+    });
     closeSettingsBtn?.addEventListener("click", closeSettings);
     themeModeButtons.forEach((button) => {
       button.addEventListener("click", () => {
@@ -786,6 +1137,23 @@
       }
     });
 
+    actionDialogOverlay?.addEventListener("click", (event) => {
+      if (event.target === actionDialogOverlay) {
+        closeActionDialog();
+      }
+    });
+    actionDialogCloseBtn?.addEventListener("click", closeActionDialog);
+    actionDialogCancelBtn?.addEventListener("click", closeActionDialog);
+    actionDialogConfirmBtn?.addEventListener("click", () => {
+      submitActionDialog().catch(() => {});
+    });
+    actionDialogInput?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submitActionDialog().catch(() => {});
+      }
+    });
+
     readerOverlay?.addEventListener("click", (event) => {
       if (event.target === readerOverlay) {
         closeReader();
@@ -804,6 +1172,7 @@
       }
       closeSheet();
       closeSettings();
+      closeActionDialog();
       closeReader();
       closeSidePanel();
     });
@@ -1005,6 +1374,7 @@
     if (mode === "syncing") {
       driveStatusEl.textContent = "작업중";
       driveStatusEl.className = "drive-status syncing";
+      updateWorkspaceSummary(currentRenderItems.length);
       return;
     }
 
@@ -1012,11 +1382,13 @@
     if (token) {
       driveStatusEl.textContent = "연결됨";
       driveStatusEl.className = "drive-status connected";
+      updateWorkspaceSummary(currentRenderItems.length);
       return;
     }
 
     driveStatusEl.textContent = "미연결";
     driveStatusEl.className = "drive-status offline";
+    updateWorkspaceSummary(currentRenderItems.length);
   }
 
   function getDriveSyncCache() {
@@ -1217,6 +1589,7 @@
     renderTagFilters();
     renderSuggestions();
     renderBookmarks();
+    updateWorkspaceSummary(currentRenderItems.length);
   }
 
   function renderFolderFilters() {
@@ -1520,68 +1893,23 @@
     suggestionsDiv.innerHTML = "";
 
     appendSuggestion("전체", () => {
-      smartFilter = "";
-      searchInput.value = "";
-      selectedTags = [];
-      selectedFolder = "";
-      sortSelect.value = "recentAdd";
-      currentSort = "recentAdd";
-      renderBookmarks();
-      renderTagFilters();
-      renderFolderFilters();
-      closeSidePanelOnCompact();
+      applyWorkspacePreset("recentAdd");
     });
 
     appendSuggestion("최근 추가", () => {
-      smartFilter = "";
-      searchInput.value = "";
-      selectedTags = [];
-      selectedFolder = "";
-      sortSelect.value = "recentAdd";
-      currentSort = "recentAdd";
-      renderBookmarks();
-      renderTagFilters();
-      renderFolderFilters();
-      closeSidePanelOnCompact();
+      applyWorkspacePreset("recentAdd");
     });
 
     appendSuggestion("최근 방문", () => {
-      smartFilter = "";
-      searchInput.value = "";
-      selectedTags = [];
-      selectedFolder = "";
-      sortSelect.value = "recentVisit";
-      currentSort = "recentVisit";
-      renderBookmarks();
-      renderTagFilters();
-      renderFolderFilters();
-      closeSidePanelOnCompact();
+      applyWorkspacePreset("recentVisit");
     });
 
     appendSuggestion("자주 방문", () => {
-      smartFilter = "";
-      searchInput.value = "";
-      selectedTags = [];
-      selectedFolder = "";
-      sortSelect.value = "frequent";
-      currentSort = "frequent";
-      renderBookmarks();
-      renderTagFilters();
-      renderFolderFilters();
-      closeSidePanelOnCompact();
+      applyWorkspacePreset("frequent");
     });
 
     appendSuggestion("30일 이상 안 본", () => {
-      smartFilter = "stale30";
-      searchInput.value = "";
-      selectedTags = [];
-      selectedFolder = "";
-      sortSelect.value = "recentAdd";
-      currentSort = "recentAdd";
-      renderBookmarks();
-      renderTagFilters();
-      renderFolderFilters();
-      closeSidePanelOnCompact();
+      applyWorkspacePreset("stale30");
     });
   }
 
@@ -1871,17 +2199,20 @@
       empty.appendChild(text);
       cardsContainer.appendChild(empty);
       updateBulkBar();
+      updateWorkspaceSummary(0);
       return;
     }
 
     if (typeof IntersectionObserver === "undefined") {
       renderAllBookmarksAtOnce();
       updateBulkBar();
+      updateWorkspaceSummary(filtered.length);
       return;
     }
 
     renderNextBookmarkBatch();
     updateBulkBar();
+    updateWorkspaceSummary(filtered.length);
   }
 
   function renderAllBookmarksAtOnce() {
@@ -2306,6 +2637,7 @@
 
   function updateBulkBar() {
     if (!bulkBar || !bulkCount) {
+      updateWorkspaceSummary(currentRenderItems.length);
       return;
     }
 
@@ -2321,6 +2653,8 @@
           ? "현재 목록 선택 해제"
           : "현재 목록 전체 선택";
     }
+
+    updateWorkspaceSummary(currentRenderItems.length);
   }
 
   function applyBulkMutation(mutator, doneMessage) {
@@ -2411,100 +2745,129 @@
 
   function bulkMoveToFolder() {
     if (!selectedBookmarkIds.size) {
-      showToast("먼저 사이트를 선택해주세요");
+      showToast("선택된 사이트가 없어요. 카드 왼쪽 체크박스로 먼저 골라주세요.");
       return;
     }
 
-    const folderName = prompt("이동할 폴더 이름을 입력하세요", selectedFolder || DEFAULT_FOLDER_NAME);
-    if (folderName === null) {
-      return;
-    }
-
-    const normalizedFolder = normalizeFolderName(folderName);
-    moveBookmarksToFolderIds(Array.from(selectedBookmarkIds), normalizedFolder);
+    openActionDialog({
+      eyebrow: "대량 작업 · 폴더 이동",
+      title: "선택한 사이트를 어느 폴더로 옮길까요?",
+      description: "폴더 경로를 입력하면 선택한 사이트 전체에 한 번에 적용합니다.",
+      label: "대상 폴더",
+      defaultValue: selectedFolder || DEFAULT_FOLDER_NAME,
+      placeholder: "예: 읽기/나중에",
+      confirmText: "폴더 이동",
+      summary: `${selectedBookmarkIds.size}개 사이트가 이동 대상입니다.`,
+      onConfirm(value) {
+        const normalizedFolder = normalizeFolderName(value);
+        moveBookmarksToFolderIds(Array.from(selectedBookmarkIds), normalizedFolder);
+        return true;
+      }
+    });
   }
 
   function bulkAddTags() {
     if (!selectedBookmarkIds.size) {
-      showToast("먼저 사이트를 선택해주세요");
+      showToast("선택된 사이트가 없어요. 카드 왼쪽 체크박스로 먼저 골라주세요.");
       return;
     }
 
-    const raw = prompt("추가할 태그를 입력하세요 (띄어쓰기/쉼표 구분)");
-    if (raw === null) {
-      return;
-    }
+    openActionDialog({
+      eyebrow: "대량 작업 · 태그 추가",
+      title: "선택한 사이트에 어떤 태그를 더할까요?",
+      description: "띄어쓰기 또는 쉼표로 여러 태그를 한 번에 입력할 수 있습니다.",
+      label: "추가할 태그",
+      placeholder: "예: design, 읽기, 중요",
+      confirmText: "태그 추가",
+      summary: `${selectedBookmarkIds.size}개 사이트에 태그를 추가합니다.`,
+      onConfirm(value) {
+        const tagsToAdd = parseTags(value);
+        if (!tagsToAdd.length) {
+          showToast("추가할 태그가 없습니다");
+          return false;
+        }
 
-    const tagsToAdd = parseTags(raw);
-    if (!tagsToAdd.length) {
-      showToast("추가할 태그가 없습니다");
-      return;
-    }
-
-    applyBulkMutation((item) => {
-      const merged = Array.from(new Set([...(item.tags || []), ...tagsToAdd]));
-      return { tags: merged };
-    }, "태그 추가 완료");
+        applyBulkMutation((item) => {
+          const merged = Array.from(new Set([...(item.tags || []), ...tagsToAdd]));
+          return { tags: merged };
+        }, "태그 추가 완료");
+        return true;
+      }
+    });
   }
 
   function bulkRemoveTags() {
     if (!selectedBookmarkIds.size) {
-      showToast("먼저 사이트를 선택해주세요");
+      showToast("선택된 사이트가 없어요. 카드 왼쪽 체크박스로 먼저 골라주세요.");
       return;
     }
 
-    const raw = prompt("제거할 태그를 입력하세요 (띄어쓰기/쉼표 구분)");
-    if (raw === null) {
-      return;
-    }
+    openActionDialog({
+      eyebrow: "대량 작업 · 태그 제거",
+      title: "선택한 사이트에서 어떤 태그를 뺄까요?",
+      description: "지울 태그를 입력하면 선택된 사이트 전체에서 일괄 제거합니다.",
+      label: "제거할 태그",
+      placeholder: "예: design, 읽기",
+      confirmText: "태그 제거",
+      summary: `${selectedBookmarkIds.size}개 사이트에서 태그를 제거합니다.`,
+      onConfirm(value) {
+        const tagsToRemove = new Set(parseTags(value));
+        if (!tagsToRemove.size) {
+          showToast("제거할 태그가 없습니다");
+          return false;
+        }
 
-    const tagsToRemove = new Set(parseTags(raw));
-    if (!tagsToRemove.size) {
-      showToast("제거할 태그가 없습니다");
-      return;
-    }
-
-    applyBulkMutation((item) => {
-      const nextTags = (item.tags || []).filter((tag) => !tagsToRemove.has(tag));
-      return { tags: nextTags };
-    }, "태그 제거 완료");
+        applyBulkMutation((item) => {
+          const nextTags = (item.tags || []).filter((tag) => !tagsToRemove.has(tag));
+          return { tags: nextTags };
+        }, "태그 제거 완료");
+        return true;
+      }
+    });
   }
 
   function bulkDeleteSelected() {
     if (!selectedBookmarkIds.size) {
-      showToast("먼저 사이트를 선택해주세요");
+      showToast("선택된 사이트가 없어요. 카드 왼쪽 체크박스로 먼저 골라주세요.");
       return;
     }
 
-    if (!confirm(`선택한 ${selectedBookmarkIds.size}개 사이트를 삭제할까요?`)) {
-      return;
-    }
+    openActionDialog({
+      eyebrow: "위험 작업",
+      title: `선택한 ${selectedBookmarkIds.size}개 사이트를 삭제할까요?`,
+      description: "삭제하면 동기화용 tombstone도 함께 기록됩니다. 신중하게 진행해주세요.",
+      hideInput: true,
+      confirmText: "삭제",
+      summary: "선택한 항목만 일괄 삭제됩니다.",
+      onConfirm() {
+        const selectedSet = new Set(selectedBookmarkIds);
+        const data = getData();
+        const now = Date.now();
+        let deletedCount = 0;
 
-    const selectedSet = new Set(selectedBookmarkIds);
-    const data = getData();
-    const now = Date.now();
-    let deletedCount = 0;
+        data.bookmarks = data.bookmarks.filter((item) => {
+          if (!selectedSet.has(item.id)) {
+            return true;
+          }
+          deletedCount += 1;
+          upsertTombstone(data, item.id, now);
+          return false;
+        });
 
-    data.bookmarks = data.bookmarks.filter((item) => {
-      if (!selectedSet.has(item.id)) {
+        if (!deletedCount) {
+          return true;
+        }
+
+        data.updatedAt = now;
+        saveData(data, { touch: false });
+        scheduleAutoSync();
+        selectedBookmarkIds.clear();
+        deletedItem = null;
+        render();
+        showToast(`${deletedCount}개 삭제했습니다`);
         return true;
       }
-      deletedCount += 1;
-      upsertTombstone(data, item.id, now);
-      return false;
     });
-
-    if (!deletedCount) {
-      return;
-    }
-
-    data.updatedAt = now;
-    saveData(data, { touch: false });
-    scheduleAutoSync();
-    selectedBookmarkIds.clear();
-    deletedItem = null;
-    render();
-    showToast(`${deletedCount}개 삭제했습니다`);
   }
 
   function isEditableElement(target) {
@@ -2759,6 +3122,81 @@
     }, 250);
   }
 
+  function updateSheetProgress(step) {
+    if (!sheetProgress) {
+      return;
+    }
+    sheetProgress.textContent =
+      step === 2
+        ? "2 / 2 단계 · 이름·폴더·태그 정리"
+        : "1 / 2 단계 · URL 입력";
+  }
+
+  function closeActionDialog() {
+    pendingActionDialog = null;
+    if (actionDialogOverlay) {
+      actionDialogOverlay.hidden = true;
+    }
+    if (actionDialogInput) {
+      actionDialogInput.value = "";
+    }
+  }
+
+  function openActionDialog(options) {
+    if (
+      !actionDialogOverlay ||
+      !actionDialogTitle ||
+      !actionDialogDescription ||
+      !actionDialogSummary ||
+      !actionDialogConfirmBtn ||
+      !actionDialogInput ||
+      !actionDialogLabel
+    ) {
+      return;
+    }
+
+    pendingActionDialog = {
+      onConfirm: options.onConfirm
+    };
+
+    if (actionDialogEyebrow) {
+      actionDialogEyebrow.textContent = options.eyebrow || "선택한 항목 작업";
+    }
+    actionDialogTitle.textContent = options.title || "작업 확인";
+    actionDialogDescription.textContent = options.description || "";
+    actionDialogSummary.textContent = options.summary || "";
+    actionDialogLabel.textContent = options.label || "입력";
+    actionDialogInput.value = options.defaultValue || "";
+    actionDialogInput.placeholder = options.placeholder || "";
+    actionDialogInput.hidden = !!options.hideInput;
+    actionDialogLabel.hidden = !!options.hideInput;
+    actionDialogConfirmBtn.textContent = options.confirmText || "확인";
+    actionDialogOverlay.hidden = false;
+
+    setTimeout(() => {
+      if (options.hideInput) {
+        actionDialogConfirmBtn.focus();
+      } else {
+        actionDialogInput.focus();
+        actionDialogInput.select();
+      }
+    }, 0);
+  }
+
+  async function submitActionDialog() {
+    if (!pendingActionDialog?.onConfirm) {
+      closeActionDialog();
+      return;
+    }
+
+    const value = actionDialogInput?.value || "";
+    const handler = pendingActionDialog.onConfirm;
+    const shouldClose = await handler(value);
+    if (shouldClose !== false) {
+      closeActionDialog();
+    }
+  }
+
   function openAdd() {
     sheetMode = "add";
     editId = null;
@@ -2778,9 +3216,11 @@
     setSheetTags([]);
     siteDescInput.value = "";
     setMetadataPreview(null);
+    setMetadataHint("1단계에서 URL을 확인하면 2단계에서 제목·폴더·태그를 바로 정리할 수 있어요.");
 
     step1.classList.add("active");
     step2.classList.remove("active");
+    updateSheetProgress(1);
 
     sheetOverlay.style.display = "flex";
     setTimeout(() => sheet.classList.add("open"), 10);
@@ -2805,9 +3245,11 @@
     setSheetTags([]);
     siteDescInput.value = "";
     setMetadataPreview(null);
+    setMetadataHint("주소를 확인한 뒤 이름·폴더·태그를 바로 정리하세요.");
 
     step1.classList.remove("active");
     step2.classList.add("active");
+    updateSheetProgress(2);
 
     sheetOverlay.style.display = "flex";
     setTimeout(() => sheet.classList.add("open"), 10);
@@ -2846,9 +3288,11 @@
       description: item.desc || "",
       domain: item.domain || extractDomain(item.url)
     });
+    setMetadataHint("기존 정보를 검토하고 필요한 값만 빠르게 수정하세요.");
 
     step1.classList.remove("active");
     step2.classList.add("active");
+    updateSheetProgress(2);
 
     sheetOverlay.style.display = "flex";
     setTimeout(() => sheet.classList.add("open"), 10);
@@ -2928,7 +3372,7 @@
     const requestId = Date.now() + Math.random();
     metadataRequestInFlight = requestId;
     setMetadataLoading(true);
-    setMetadataHint("메타데이터를 불러오는 중...");
+    setMetadataHint("주소를 불러오는 중... 잠시만 기다려주세요.");
     if (nextBtn) {
       nextBtn.disabled = true;
     }
@@ -2957,12 +3401,12 @@
       }
 
       setMetadataPreview(metadata);
-      setMetadataHint("Open Graph 정보를 자동 반영했습니다.");
+      setMetadataHint("제목·대표 이미지·설명을 자동으로 채웠어요.");
     } catch (_error) {
       if (metadataRequestInFlight !== requestId) {
         return;
       }
-      setMetadataHint("메타데이터 자동 추출에 실패했습니다. 필요하면 직접 입력해주세요.");
+      setMetadataHint("자동 추출에 실패했어요. 이름과 설명은 직접 넣어도 됩니다.");
     } finally {
       if (metadataRequestInFlight === requestId) {
         setMetadataLoading(false);
