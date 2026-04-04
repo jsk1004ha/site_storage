@@ -2789,3 +2789,65 @@ body[data-app-context="extension"] main {
     background-position: -40% 0;
   }
 }
+
+/* Scholarly UI skin */
+.scholarly-body {
+  --primary: #4d44e3;
+  --surface: #f9f9ff;
+  --panel: #f1f3ff;
+  --ink: #19315d;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.scholarly-shell {
+  grid-template-columns: 256px minmax(0, 1fr);
+}
+
+.scholarly-sidebar {
+  background: var(--panel);
+  border-right: 1px solid #d8e2ff;
+  padding: 1.25rem 0.9rem;
+}
+
+.brand-block h1 { margin: 0; font-size: 1.1rem; color: #19315d; }
+.brand-block p { margin: 0.2rem 0 1rem; font-size: 0.72rem; letter-spacing: .12em; text-transform: uppercase; opacity: .65; }
+.main-nav { display: grid; gap: .35rem; margin-bottom: .8rem; }
+.nav-item {
+  text-align: left; border: 0; background: transparent; color: #19315db3;
+  border-radius: .7rem; padding: .62rem .75rem; font-weight: 700; cursor: pointer;
+}
+.nav-item.active, .nav-item:hover { background: #e1e8ff; color: var(--primary); }
+
+.scholarly-main-panel { padding: 0 1.2rem 7rem; }
+.top-nav {
+  position: sticky; top: 0; z-index: 10; background: #f9f9ffcc; backdrop-filter: blur(8px);
+  display: flex; align-items: center; gap: .8rem; padding: .8rem 0;
+}
+.top-search { flex: 1; max-width: 700px; }
+.top-actions { margin-left: auto; display: flex; gap: .5rem; }
+.icon-btn { border: 1px solid #d8e2ff; background: #fff; border-radius: .65rem; padding: .5rem .7rem; font-weight: 600; }
+
+.scholarly-header .workspace-hero {
+  border: 1px solid #d8e2ff; border-radius: 1rem; padding: 1.1rem; background: #ffffffc4;
+}
+.scholarly-header .workspace-kicker { color: #4b526c; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.scholarly-header .workspace-hero h2 { margin: .3rem 0; font-size: 2rem; color: #19315d; }
+.scholarly-header .workspace-summary { color: #485f8d; max-width: 70ch; }
+
+.quick-actions-panel h2 { margin-bottom: .55rem; }
+.search-shortcuts { margin-top: .7rem; display: flex; flex-wrap: wrap; gap: .4rem; }
+.search-shortcuts button { border: 1px solid #d8e2ff; background: #fff; border-radius: 999px; padding: .3rem .65rem; font-size: .78rem; }
+
+#cardsContainer {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(265px, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 960px) {
+  .scholarly-shell { grid-template-columns: 1fr; }
+  .scholarly-sidebar { position: fixed; left: 0; top: 0; width: min(92vw, 320px); transform: translateX(-110%); transition: transform .25s ease; z-index: 30; }
+  .scholarly-sidebar.open { transform: translateX(0); }
+  .side-close { display: inline-flex; }
+}
