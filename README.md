@@ -202,6 +202,8 @@ Drive 파일명은 `remember-sync-v2.json`입니다.
 
 ## 최근 변경
 
+- `2026-04-04`: Scholarly Curator 스타일 사이드바/탑바 중심 UI 스킨 적용, 기존 Remember 기능 ID/동작 유지
+- `2026-04-04`: 검색/정렬/뷰 전환/대량작업/설정/Drive 동기화 동선을 새 UI에 맞게 재배치
 - `2026-03-17`: 루트 `README.md` 추가
 - `2026-03-17`: 설치 경로, 실행 방식, Drive OAuth 설정 절차 정리
 - `2026-03-17`: `site_storage/README.md`를 하위 폴더 안내 문서로 축약
