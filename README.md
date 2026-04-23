@@ -124,8 +124,13 @@ python -m http.server 5500
 1. 설정 패널을 엽니다.
 2. `Google Drive 동기화` > `OAuth 설정`으로 이동합니다.
 3. `Google OAuth Client ID`를 입력하고 저장합니다.
-4. `Google 연결`을 눌러 로그인합니다.
+4. `Google 연결`을 눌러 최초 1회 동의(offline access)를 완료합니다.
 5. 필요에 따라 `양방향 동기화`, `Drive 저장`, `Drive 불러오기`를 사용합니다.
+
+동작 방식:
+- OAuth는 Authorization Code + PKCE 방식으로 동작합니다.
+- 최초 동의 후 발급된 refresh token을 저장해 access token 만료 시 자동으로 갱신합니다.
+- 자동 갱신이 실패한 경우에만 로그인 UI를 다시 띄웁니다.
 
 ## 사용 흐름 예시
 
