@@ -3223,8 +3223,10 @@
     step2.classList.remove("active");
     updateSheetProgress(1);
 
-    sheetOverlay.style.display = "flex";
-    setTimeout(() => sheet.classList.add("open"), 10);
+    sheetOverlay.hidden = false;
+    requestAnimationFrame(() => {
+      sheetOverlay.classList.add("open");
+    });
   }
 
   function openAddPrefilled(url, name) {
@@ -3252,8 +3254,10 @@
     step2.classList.add("active");
     updateSheetProgress(2);
 
-    sheetOverlay.style.display = "flex";
-    setTimeout(() => sheet.classList.add("open"), 10);
+    sheetOverlay.hidden = false;
+    requestAnimationFrame(() => {
+      sheetOverlay.classList.add("open");
+    });
     if (url) {
       autofillMetadataFromUrl(url);
     }
@@ -3295,14 +3299,18 @@
     step2.classList.add("active");
     updateSheetProgress(2);
 
-    sheetOverlay.style.display = "flex";
-    setTimeout(() => sheet.classList.add("open"), 10);
+    sheetOverlay.hidden = false;
+    requestAnimationFrame(() => {
+      sheetOverlay.classList.add("open");
+    });
   }
 
   function closeSheet() {
-    sheet.classList.remove("open");
+    sheetOverlay.classList.remove("open");
     setTimeout(() => {
-      sheetOverlay.style.display = "none";
+      if (!sheetOverlay.classList.contains("open")) {
+        sheetOverlay.hidden = true;
+      }
     }, 250);
   }
 
