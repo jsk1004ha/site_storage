@@ -3,284 +3,222 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Remember</title>
+  <title>Remember Popup</title>
   <link rel="stylesheet" href="../app-style.css" />
 </head>
 <body data-app-context="extension">
   <div class="app-shell">
     <aside id="sidePanel" class="side-panel">
-      <div class="side-head">
-        <h1>기억해둘 사이트 모음</h1>
-        <button id="closeSidePanelBtn" class="side-close" type="button">닫기</button>
+      <div class="brand-block">
+        <h1>Archive Controls</h1>
       </div>
-
-      <section class="side-section">
-        <h2>기본/스마트 뷰</h2>
-        <div id="suggestions"></div>
+      <section class="side-section quick-actions-panel">
+        <div class="section-header"><h2>Smart Views</h2></div>
+        <div id="suggestions" class="suggestion-list"></div>
       </section>
-
-      <section class="side-section">
+      <section class="side-section facet-section">
         <div class="facet-toggle" id="facetToggle">
           <button id="showFolderPaneBtn" type="button" data-facet="folders" class="active">폴더</button>
           <button id="showTagPaneBtn" type="button" data-facet="tags">태그</button>
         </div>
-
         <div id="foldersPane" class="facet-pane">
-          <div id="folderFilters"></div>
+          <div id="folderFilters" class="filter-tree"></div>
         </div>
-
         <div id="tagsPane" class="facet-pane" hidden>
-          <details id="tagAccordion" class="tag-accordion">
-            <summary>태그 목록</summary>
-            <input id="tagSearchInput" type="text" placeholder="태그 검색" />
-            <div id="tagFilters"></div>
-          </details>
+          <input id="tagSearchInput" type="text" class="input-base input-small" placeholder="태그 검색" />
+          <div id="tagFilters" class="chip-group"></div>
         </div>
       </section>
-
       <div class="side-footer">
-        <button id="openSettingsBtn" class="settings-side-btn" type="button">설정</button>
+        <button id="openSettingsBtn" class="btn-base btn-outline" type="button">Settings</button>
+        <button id="closeSidePanelBtn" class="btn-base btn-ghost" type="button">닫기</button>
       </div>
     </aside>
 
     <div id="sideBackdrop" class="side-backdrop" hidden></div>
 
     <div class="main-panel">
-      <header>
-        <div class="controls">
-          <button id="openSidePanelBtn" class="menu-btn" type="button" data-tooltip="사이드바 열기">☰</button>
-          <div class="search-wrap">
-            <span class="search-icon" aria-hidden="true">&#128269;</span>
-            <input type="text" id="searchInput" placeholder="검색 / #태그 / folder: / site:" />
-          </div>
-          <select id="sortSelect" aria-label="정렬 기준">
-            <option value="recentAdd">최근 추가</option>
-            <option value="recentVisit">최근 방문</option>
-            <option value="frequent">자주 방문</option>
-          </select>
-          <select id="folderFilterSelect" aria-label="폴더 빠른 필터">
-            <option value="">전체 폴더</option>
-          </select>
-          <div class="view-toggle" id="viewToggle">
-            <button type="button" data-view-mode="grid">그리드</button>
-            <button type="button" data-view-mode="list">리스트</button>
-            <button type="button" data-view-mode="magazine" class="active">매거진</button>
-          </div>
+      <header class="top-nav">
+        <div class="nav-left">
+          <button id="openSidePanelBtn" class="btn-icon" type="button" aria-label="메뉴 열기">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
         </div>
-        <div class="search-guidance" aria-label="검색 도움말">
-          <div class="search-guidance-copy">
-            <strong>바로 쓰는 검색</strong>
-            <span>예시 버튼을 눌러 검색창에 넣고 바로 좁혀보세요.</span>
-          </div>
-          <div class="search-shortcuts">
-            <button type="button" data-search-snippet="#태그 ">#태그</button>
-            <button type="button" data-search-snippet="folder:">folder:</button>
-            <button type="button" data-search-snippet="site:">site:</button>
-            <button type="button" data-search-snippet="is:pinned">is:pinned</button>
-            <button type="button" data-search-snippet="has:reader">has:reader</button>
-          </div>
-          <button id="clearFiltersBtn" class="search-reset-btn" type="button">필터 초기화</button>
-        </div>
-        <div class="results-strip" aria-live="polite">
-          <strong id="resultsCountLabel">0개 표시</strong>
-          <span id="resultsContextLabel">전체 컬렉션</span>
+        <div class="search-wrap">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" id="searchInput" class="search-input" placeholder="Search..." />
         </div>
       </header>
 
-      <main>
-        <section id="bulkBar" class="bulk-bar" hidden>
-          <span id="bulkCount">0개 선택됨</span>
-          <button id="bulkToggleVisibleBtn" type="button">현재 목록 전체 선택</button>
-          <button id="bulkMoveFolderBtn" type="button">폴더 이동</button>
-          <button id="bulkAddTagBtn" type="button">태그 추가</button>
-          <button id="bulkRemoveTagBtn" type="button">태그 제거</button>
-          <button id="bulkDeleteBtn" type="button" class="danger">선택 삭제</button>
-          <button id="bulkClearBtn" type="button">선택 해제</button>
+      <main class="workspace-content">
+        <section class="controls-panel">
+          <div class="controls-row">
+            <div class="results-summary" aria-live="polite">
+              <strong id="resultsCountLabel">0개 표시</strong>
+              <span id="resultsContextLabel">전체 컬렉션</span>
+            </div>
+            <div class="controls-group">
+              <select id="sortSelect" class="input-base input-small" aria-label="정렬 기준">
+                <option value="recentAdd">최근 추가</option>
+                <option value="recentVisit">최근 방문</option>
+                <option value="frequent">자주 방문</option>
+              </select>
+              <select id="folderFilterSelect" class="input-base input-small" aria-label="폴더 필터">
+                <option value="">전체 폴더</option>
+              </select>
+              <div class="view-toggle" id="viewToggle">
+                <button type="button" data-view-mode="grid">그리드</button>
+                <button type="button" data-view-mode="list">리스트</button>
+                <button type="button" data-view-mode="magazine" class="active">매거진</button>
+              </div>
+            </div>
+          </div>
+          <div class="search-shortcuts">
+            <button type="button" class="chip-base" data-search-snippet="#태그 ">#태그</button>
+            <button type="button" class="chip-base" data-search-snippet="folder:">folder:</button>
+            <button id="clearFiltersBtn" class="btn-base btn-ghost btn-small" type="button" style="margin-left:auto;">초기화</button>
+          </div>
         </section>
-        <section id="cardsContainer"></section>
+
+        <section id="bulkBar" class="bulk-bar floating-bulk" hidden>
+          <div class="bulk-info"><span id="bulkCount">0개 선택됨</span></div>
+          <div class="bulk-actions">
+            <button id="bulkToggleVisibleBtn" class="btn-base btn-small btn-ghost" type="button">현재 뷰 전체선택</button>
+            <button id="bulkMoveFolderBtn" class="btn-base btn-small btn-outline" type="button">폴더 적용</button>
+            <button id="bulkAddTagBtn" class="btn-base btn-small btn-outline" type="button">+ 태그</button>
+            <button id="bulkRemoveTagBtn" class="btn-base btn-small btn-outline" type="button">- 태그</button>
+            <button id="bulkDeleteBtn" class="btn-base btn-small btn-danger" type="button">선택 삭제</button>
+            <button id="bulkClearBtn" class="btn-base btn-small btn-ghost" type="button">해제</button>
+          </div>
+        </section>
+
+        <section id="cardsContainer" class="cards-container"></section>
       </main>
     </div>
   </div>
 
-  <div class="settings-overlay" id="settingsOverlay" hidden>
-    <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-      <div class="settings-head">
-        <h2 id="settingsTitle">설정</h2>
-        <button id="closeSettingsBtn" type="button" class="settings-close">닫기</button>
+  <div class="bottom-cta">
+    <button id="saveCurrentTabBtn" class="btn-base btn-outline shadow-float" data-tooltip="현재 탭 저장">현재 탭 저장</button>
+    <button id="openSheetBtn" class="btn-base btn-primary shadow-float" aria-label="새 사이트 추가">직접 추가</button>
+  </div>
+  <button id="scrollTopBtn" class="btn-icon shadow-float floating-up" type="button" hidden aria-label="맨 위로">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+  </button>
+
+  <div id="toastContainer" class="toast-container"></div>
+
+  <div class="settings-overlay modal-backdrop" id="settingsOverlay" hidden>
+    <section class="modal-panel settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="modal-header compact">
+        <h2 id="settingsTitle">Settings</h2>
+        <button id="closeSettingsBtn" type="button" class="btn-icon btn-ghost"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
       </div>
-
-      <section class="appearance-panel">
-        <h3>보기 설정</h3>
-        <div class="theme-mode-group" id="themeModeGroup" role="group" aria-label="테마 모드">
-          <button id="themeAutoBtn" type="button" class="theme-mode-btn" data-theme-mode="auto">자동</button>
-          <button id="themeLightBtn" type="button" class="theme-mode-btn" data-theme-mode="light">라이트</button>
-          <button id="themeDarkBtn" type="button" class="theme-mode-btn" data-theme-mode="dark">다크</button>
-        </div>
-        <p id="themeModeHint" class="theme-mode-hint">시스템 테마에 맞춰 자동 적용</p>
-      </section>
-
-      <section class="folder-style-panel">
-        <h3>폴더 스타일</h3>
-        <label for="folderStyleTarget">대상 폴더</label>
-        <select id="folderStyleTarget"></select>
-        <div class="folder-style-inline">
-          <input id="folderEmojiInput" type="text" maxlength="2" placeholder="이모지" />
-          <input id="folderColorInput" type="color" value="#1d4ed8" />
-        </div>
-        <div class="folder-style-actions">
-          <button id="saveFolderStyleBtn" type="button">저장</button>
-          <button id="clearFolderStyleBtn" type="button">초기화</button>
-        </div>
-      </section>
-
-      <section class="data-panel">
-        <h3>데이터 관리</h3>
-        <div class="data-actions">
-          <button id="exportBtn" type="button">백업 다운로드</button>
-          <button id="importBtn" type="button">백업 복구</button>
-          <button id="checkDeadLinksBtn" type="button">죽은 링크 검사</button>
-          <button id="deleteBrokenLinksBtn" type="button">죽은 링크 일괄 삭제</button>
-        </div>
-      </section>
-
-      <section class="drive-panel">
-        <div class="drive-head">
-          <h2>Google Drive 동기화</h2>
-          <span id="driveStatus" class="drive-status offline">미연결</span>
-        </div>
-        <div class="drive-actions">
-          <button id="driveConnectBtn" type="button" data-tooltip="Google 계정 연결">Google 연결</button>
-          <button id="driveSyncBtn" type="button" class="primary" data-tooltip="양방향 동기화">양방향 동기화</button>
-          <button id="drivePushBtn" type="button" data-tooltip="로컬 데이터를 Drive에 저장">Drive 저장</button>
-          <button id="drivePullBtn" type="button" data-tooltip="Drive 데이터를 불러오기">Drive 불러오기</button>
-        </div>
-        <details class="drive-settings">
-          <summary>OAuth 설정</summary>
-          <label for="googleClientIdInput">Google OAuth Client ID</label>
-          <input id="googleClientIdInput" type="text" placeholder="xxxx.apps.googleusercontent.com" />
-          <label for="googleTokenDurationSelect">토큰 만료 기간</label>
-          <select id="googleTokenDurationSelect">
-            <option value="1d">1일</option>
-            <option value="1w" selected>7일</option>
-            <option value="1m">30일</option>
-            <option value="3m">3개월</option>
-            <option value="1y">1년</option>
-          </select>
-          <div class="drive-settings-actions">
-            <button id="saveGoogleConfigBtn" type="button">Client ID 저장</button>
-            <button id="clearGoogleConfigBtn" type="button">초기화</button>
+      <div class="modal-body">
+        <section class="settings-section">
+          <h3>Appearance</h3>
+          <div class="theme-mode-group segmented-control" id="themeModeGroup" role="group">
+            <button id="themeAutoBtn" type="button" data-theme-mode="auto">자동</button>
+            <button id="themeLightBtn" type="button" data-theme-mode="light">라이트</button>
+            <button id="themeDarkBtn" type="button" data-theme-mode="dark">다크</button>
           </div>
-          <p>
-            웹과 확장프로그램에서 같은 Client ID를 쓰면 동일한 Drive appDataFolder 파일을 공유합니다.
-          </p>
-        </details>
-      </section>
+        </section>
+        <section class="settings-section">
+          <h3>Google Drive Sync</h3>
+          <span id="driveStatus" class="status-badge offline" style="margin-bottom:8px; display:inline-block;">미연결</span>
+          <div class="btn-grid">
+            <button id="driveConnectBtn" class="btn-base btn-outline btn-small" type="button">연결</button>
+            <button id="driveSyncBtn" class="btn-base btn-primary btn-small" type="button">동기화</button>
+            <button id="drivePushBtn" class="btn-base btn-outline btn-small" type="button">저장</button>
+            <button id="drivePullBtn" class="btn-base btn-outline btn-small" type="button">복구</button>
+          </div>
+          <details class="advanced-details mt-4">
+            <summary>Advanced OAuth Settings</summary>
+            <div class="form-group"><label for="googleClientIdInput">Client ID</label><input id="googleClientIdInput" class="input-base input-small" type="text" /></div>
+            <div class="form-group">
+              <label for="googleTokenDurationSelect">토큰 기간</label>
+              <select id="googleTokenDurationSelect" class="input-base input-small"><option value="1w" selected>7일</option><option value="1m">30일</option></select>
+            </div>
+            <div class="btn-row"><button id="saveGoogleConfigBtn" class="btn-base btn-outline btn-small" type="button">저장</button><button id="clearGoogleConfigBtn" class="btn-base btn-outline btn-small" type="button">초기화</button></div>
+          </details>
+        </section>
+        <section class="settings-section">
+          <h3>Data Management</h3>
+          <div class="btn-grid">
+            <button id="exportBtn" class="btn-base btn-outline btn-small" type="button">백업 다운로드</button>
+            <button id="importBtn" class="btn-base btn-outline btn-small" type="button">백업 복구</button>
+            <button id="checkDeadLinksBtn" class="btn-base btn-outline btn-small" type="button">죽은 링크 검사</button>
+            <button id="deleteBrokenLinksBtn" class="btn-base btn-outline btn-danger-ghost btn-small" type="button">죽은 링크 삭제</button>
+          </div>
+        </section>
+      </div>
     </section>
   </div>
 
-  <div class="bottom-utils">
-    <button id="bookmarkletBtn" data-tooltip="북마클릿 코드 복사">북마클릿</button>
-  </div>
-
-  <div class="bottom-cta">
-    <button id="saveCurrentTabBtn" class="cta-tab-btn" data-tooltip="현재 탭을 바로 저장">현재 탭 추가</button>
-    <button id="openSheetBtn" data-tooltip="새 사이트 추가">새 사이트 추가하기</button>
-  </div>
-  <button id="scrollTopBtn" class="scroll-top-btn" type="button" hidden data-tooltip="맨 위로">↑</button>
-
-  <input type="file" id="importFile" accept="application/json" hidden />
-  <div id="toastContainer"></div>
-
-  <div class="reader-overlay" id="readerOverlay" hidden>
-    <article class="reader-panel">
-      <div class="reader-head">
-        <button id="readerCloseBtn" type="button">닫기</button>
-        <a id="readerOpenOriginal" href="#" target="_blank" rel="noopener noreferrer">원문 열기</a>
+  <div class="reader-overlay modal-backdrop" id="readerOverlay" hidden>
+    <article class="modal-panel reader-panel">
+      <div class="modal-header compact">
+        <h2 id="readerTitle" class="reader-title" style="font-size:1.1rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60%;">Title</h2>
+        <div class="header-actions">
+          <a id="readerOpenOriginal" href="#" target="_blank" rel="noopener noreferrer" class="btn-base btn-outline btn-small">원문 열기</a>
+          <button id="readerCloseBtn" type="button" class="btn-icon btn-ghost"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+        </div>
       </div>
-      <h2 id="readerTitle"></h2>
-      <p id="readerSubline"></p>
-      <div id="readerImages" class="reader-images"></div>
-      <div id="readerBody" class="reader-body"></div>
+      <div class="modal-body reader-body-wrap">
+        <p id="readerSubline" class="reader-meta"></p>
+        <div id="readerImages" class="reader-images"></div>
+        <div id="readerBody" class="reader-content"></div>
+      </div>
     </article>
   </div>
 
-  <div class="sheet-overlay" id="sheetOverlay">
-    <div class="sheet" id="sheet">
-      <div class="sheet-header" id="sheetTitle">새 사이트 추가</div>
-      <div class="sheet-progress" id="sheetProgress">1 / 2 단계 · URL 입력</div>
-      <div class="field-group" id="step1">
-        <label for="siteUrl">URL</label>
-        <input type="url" id="siteUrl" placeholder="https://example.com" required />
-        <div class="sheet-buttons">
-          <button type="button" class="btn-secondary" id="cancelBtn1">취소</button>
-          <button type="button" class="btn-primary" id="nextBtn">다음</button>
+  <div class="sheet-overlay modal-backdrop" id="sheetOverlay">
+    <div class="sheet modal-panel" id="sheet">
+      <div class="modal-header compact"><h2 id="sheetTitle">새 사이트 추가</h2></div>
+      <div class="sheet-body">
+        <div class="sheet-progress" id="sheetProgress">1 / 2 단계 · URL 입력</div>
+        <div class="field-group" id="step1">
+          <div class="form-group"><label for="siteUrl">URL</label><input type="url" id="siteUrl" class="input-base" required /></div>
+          <div class="btn-row actions-end"><button type="button" class="btn-base btn-ghost" id="cancelBtn1">취소</button><button type="button" class="btn-base btn-primary" id="nextBtn">다음</button></div>
         </div>
-      </div>
-      <div class="field-group" id="step2">
-        <div class="metadata-preview" id="metadataPreview" hidden>
-          <img id="metadataThumb" alt="미리보기 썸네일" />
-          <div class="metadata-preview-text">
-            <div class="metadata-site">
-              <img id="metadataFavicon" alt="" />
-              <span id="metadataDomain"></span>
-            </div>
-            <p id="metadataDescription"></p>
+        <div class="field-group" id="step2">
+          <div class="metadata-preview" id="metadataPreview" hidden>
+            <img id="metadataThumb" alt="" class="meta-thumb" />
+            <div class="meta-text"><div class="meta-domain"><img id="metadataFavicon" alt="" class="meta-favicon" /><span id="metadataDomain"></span></div><p id="metadataDescription" class="meta-desc-text"></p></div>
           </div>
-        </div>
-        <div class="metadata-skeleton" id="metadataSkeleton" hidden>
-          <div class="skeleton-thumb"></div>
-          <div class="skeleton-lines">
-            <span></span>
-            <span></span>
-            <span></span>
+          <div class="metadata-skeleton" id="metadataSkeleton" hidden><div class="skeleton-thumb"></div><div class="skeleton-lines"><span></span><span></span><span></span></div></div>
+          <p class="helper-text" id="metadataHint"></p>
+          <div class="form-group"><label for="siteName">사이트 이름</label><input type="text" id="siteName" class="input-base input-small" /></div>
+          <div class="form-group"><label for="siteFolder">폴더</label><input type="text" id="siteFolder" class="input-base input-small" list="folderSuggestions" /></div>
+          <div class="form-group">
+            <label for="siteTags">태그</label>
+            <div class="tag-input-container" id="siteTagsChipBox" style="min-height:36px; padding:4px 8px;"><input type="text" id="siteTagsEditor" class="tag-input-field" style="font-size:0.85rem;" placeholder="입력 후 Space" /></div>
+            <input type="text" id="siteTags" hidden />
           </div>
-        </div>
-        <p class="metadata-hint" id="metadataHint">1단계에서 URL을 확인하면 2단계에서 제목·폴더·태그를 바로 정리할 수 있어요.</p>
-        <label for="siteName">사이트 이름</label>
-        <input type="text" id="siteName" placeholder="사이트 이름" />
-        <label for="siteFolder">폴더</label>
-        <input type="text" id="siteFolder" placeholder="기본" list="folderSuggestions" />
-        <label for="siteThumbUrl">썸네일 URL</label>
-        <input type="url" id="siteThumbUrl" placeholder="자동 추출" />
-        <label for="siteFaviconUrl">파비콘 URL</label>
-        <input type="url" id="siteFaviconUrl" placeholder="자동 추출" />
-        <label for="siteTags">태그 (띄어쓰기 또는 쉼표로 구분)</label>
-        <div class="tag-chip-input" id="siteTagsChipBox">
-          <input type="text" id="siteTagsEditor" placeholder="태그 입력 후 Enter/Space" />
-        </div>
-        <input type="text" id="siteTags" hidden />
-        <label for="siteDesc">메모 (선택)</label>
-        <textarea id="siteDesc" rows="3" placeholder="메모"></textarea>
-        <div class="sheet-buttons">
-          <button type="button" class="btn-secondary" id="backBtn">이전</button>
-          <button type="button" class="btn-primary" id="saveBtn">완료</button>
+          <div class="form-group"><label for="siteDesc">메모</label><textarea id="siteDesc" class="input-base textarea-base" rows="2"></textarea></div>
+          <div class="btn-row actions-end mt-4"><button type="button" class="btn-base btn-ghost" id="backBtn">이전</button><button type="button" class="btn-base btn-primary" id="saveBtn">완료</button></div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="action-dialog-overlay" id="actionDialogOverlay" hidden>
-    <section class="action-dialog" role="dialog" aria-modal="true" aria-labelledby="actionDialogTitle">
-      <div class="action-dialog-head">
-        <div>
-          <p id="actionDialogEyebrow" class="action-dialog-eyebrow">선택한 항목 작업</p>
-          <h2 id="actionDialogTitle">작업 확인</h2>
-        </div>
-        <button id="actionDialogCloseBtn" type="button" class="action-dialog-close">닫기</button>
+  <div class="action-dialog-overlay modal-backdrop" id="actionDialogOverlay" hidden>
+    <section class="modal-panel action-dialog" role="dialog" aria-modal="true" aria-labelledby="actionDialogTitle">
+      <div class="modal-header compact">
+        <div><p id="actionDialogEyebrow" class="dialog-eyebrow">작업</p><h2 id="actionDialogTitle" class="dialog-title">확인</h2></div>
+        <button id="actionDialogCloseBtn" type="button" class="btn-icon btn-ghost"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
       </div>
-      <p id="actionDialogDescription" class="action-dialog-description"></p>
-      <label id="actionDialogLabel" for="actionDialogInput">입력</label>
-      <input id="actionDialogInput" type="text" />
-      <p id="actionDialogSummary" class="action-dialog-summary"></p>
-      <div class="action-dialog-actions">
-        <button id="actionDialogCancelBtn" type="button" class="btn-secondary">취소</button>
-        <button id="actionDialogConfirmBtn" type="button" class="btn-primary">확인</button>
+      <div class="modal-body">
+        <p id="actionDialogDescription" class="dialog-desc"></p>
+        <div class="form-group"><label id="actionDialogLabel" for="actionDialogInput">입력</label><input id="actionDialogInput" class="input-base" type="text" /></div>
+        <p id="actionDialogSummary" class="dialog-summary"></p>
+        <div class="btn-row actions-end mt-4"><button id="actionDialogCancelBtn" type="button" class="btn-base btn-outline">취소</button><button id="actionDialogConfirmBtn" type="button" class="btn-base btn-primary">확인</button></div>
       </div>
     </section>
   </div>
 
   <datalist id="folderSuggestions"></datalist>
   <datalist id="tagSuggestions"></datalist>
+  <input type="file" id="importFile" accept="application/json" hidden />
 
   <script src="../app.js"></script>
 </body>
