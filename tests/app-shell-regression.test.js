@@ -77,3 +77,17 @@ test("manifest.json keeps extension entry points, commands, and required permiss
     assert.ok(fs.existsSync(path.join(rootDir, filePath)), `${filePath} should exist`);
   });
 });
+
+
+test("new-site next button moves to step 2 before metadata autofill completes", () => {
+  const appJs = read("app.js");
+
+  assert.match(
+    appJs,
+    /nextBtn\?\.addEventListener\("click", \(\) => \{[\s\S]*step1\.classList\.remove\("active"\);[\s\S]*step2\.classList\.add\("active"\);[\s\S]*autofillMetadataFromUrl\(normalized\);[\s\S]*\}\);/
+  );
+  assert.doesNotMatch(
+    appJs,
+    /nextBtn\?\.addEventListener\("click", async \(\) => \{[\s\S]*await autofillMetadataFromUrl\(normalized\);/
+  );
+});
