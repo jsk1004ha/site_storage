@@ -1076,7 +1076,7 @@
       }
     });
 
-    nextBtn?.addEventListener("click", async () => {
+    nextBtn?.addEventListener("click", () => {
       const normalized = normalizeUrl(siteUrlInput.value.trim());
       if (!normalized) {
         alert("올바른 URL을 입력해주세요");
@@ -1088,11 +1088,11 @@
         siteNameInput.value = suggestName(normalized);
       }
 
-      await autofillMetadataFromUrl(normalized);
-
       step1.classList.remove("active");
       step2.classList.add("active");
       updateSheetProgress(2);
+
+      autofillMetadataFromUrl(normalized);
     });
 
     siteUrlInput?.addEventListener("blur", () => {
