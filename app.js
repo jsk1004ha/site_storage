@@ -4897,20 +4897,6 @@
       throw new Error("OAuth 설정에서 Client ID를 먼저 저장해주세요");
     }
 
-    if (cached?.refreshToken) {
-      try {
-        const refreshed = await refreshGoogleAccessToken(config.clientId, cached.refreshToken);
-        saveGoogleToken({
-          accessToken: refreshed.accessToken,
-          expiresIn: refreshed.expiresIn,
-          refreshToken: refreshed.refreshToken || cached.refreshToken
-        });
-        return refreshed.accessToken;
-      } catch (_error) {
-        // fall through to interactive login when refresh fails
-      }
-    }
-
     if (!interactive) {
       throw new Error("Google 로그인이 필요합니다. 설정에서 다시 연결해주세요");
     }
@@ -4926,140 +4912,74 @@
     return tokenResponse.accessToken;
   }
 
-  function buildGoogleAuthUrl(clientId, redirectUri, state, codeChallenge) {
+  function buildGoogleImplicitAuthUrl(clientId, redirectUri, state) {
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("response_type", "code");
+    url.searchParams.set("response_type", "token");
     url.searchParams.set("scope", DRIVE_SCOPE);
     url.searchParams.set("state", state);
-    url.searchParams.set("access_type", "offline");
     url.searchParams.set("prompt", "consent");
     url.searchParams.set("include_granted_scopes", "true");
-    url.searchParams.set("code_challenge", codeChallenge);
-    url.searchParams.set("code_challenge_method", "S256");
     return url.toString();
-  }
-
-  function generateCodeVerifier() {
-    const bytes = new Uint8Array(32);
-    crypto.getRandomValues(bytes);
-    return base64UrlEncode(bytes);
-  }
-
-  async function generateCodeChallenge(codeVerifier) {
-    const encoded = new TextEncoder().encode(codeVerifier);
-    const digest = await crypto.subtle.digest("SHA-256", encoded);
-    return base64UrlEncode(new Uint8Array(digest));
-  }
-
-  function base64UrlEncode(bytes) {
-    let binary = "";
-    bytes.forEach((byte) => {
-      binary += String.fromCharCode(byte);
-    });
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  }
-
-  async function exchangeGoogleAuthorizationCode(clientId, code, redirectUri, codeVerifier) {
-    const payload = new URLSearchParams();
-    payload.set("client_id", clientId);
-    payload.set("code", code);
-    payload.set("code_verifier", codeVerifier);
-    payload.set("grant_type", "authorization_code");
-    payload.set("redirect_uri", redirectUri);
-    return requestGoogleToken(payload);
-  }
-
-  async function refreshGoogleAccessToken(clientId, refreshToken) {
-    const payload = new URLSearchParams();
-    payload.set("client_id", clientId);
-    payload.set("refresh_token", refreshToken);
-    payload.set("grant_type", "refresh_token");
-    return requestGoogleToken(payload);
-  }
-
-  async function requestGoogleToken(payload) {
-    const response = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: payload.toString()
-    });
-    const json = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const message = json.error_description || json.error || `HTTP ${response.status}`;
-      throw new Error(`Google 토큰 요청 실패: ${message}`);
-    }
-    const accessToken = String(json.access_token || "").trim();
-    if (!accessToken) {
-      throw new Error("Google 토큰 응답에 access_token이 없습니다");
-    }
-    return {
-      accessToken,
-      expiresIn: toSafeNumber(json.expires_in, 3600),
-      refreshToken: String(json.refresh_token || "").trim()
-    };
   }
 
   function getTokenForExtension(clientId) {
     return new Promise((resolve, reject) => {
       const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`;
       const state = generateId();
-      const codeVerifier = generateCodeVerifier();
-      generateCodeChallenge(codeVerifier)
-        .then((codeChallenge) => {
-          const authUrl = buildGoogleAuthUrl(clientId, redirectUri, state, codeChallenge);
+      const authUrl = buildGoogleImplicitAuthUrl(clientId, redirectUri, state);
 
-          chrome.identity.launchWebAuthFlow(
-            {
-              url: authUrl,
-              interactive: true
-            },
-            (redirectedUrl) => {
-              if (chrome.runtime.lastError) {
-                reject(new Error(chrome.runtime.lastError.message));
-                return;
-              }
+      chrome.identity.launchWebAuthFlow(
+        {
+          url: authUrl,
+          interactive: true
+        },
+        (redirectedUrl) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
 
-              if (!redirectedUrl) {
-                reject(new Error("Google 로그인이 취소되었습니다"));
-                return;
-              }
+          if (!redirectedUrl) {
+            reject(new Error("Google 로그인이 취소되었습니다"));
+            return;
+          }
 
-              let callback;
-              try {
-                callback = new URL(redirectedUrl);
-              } catch (_error) {
-                reject(new Error("OAuth 응답을 해석하지 못했습니다"));
-                return;
-              }
+          let callback;
+          try {
+            callback = new URL(redirectedUrl);
+          } catch (_error) {
+            reject(new Error("OAuth 응답을 해석하지 못했습니다"));
+            return;
+          }
 
-              const queryParams = callback.searchParams;
-              if (queryParams.get("state") !== state) {
-                reject(new Error("OAuth state가 일치하지 않습니다"));
-                return;
-              }
-
-              if (queryParams.get("error")) {
-                reject(new Error(`Google 로그인 실패: ${queryParams.get("error")}`));
-                return;
-              }
-
-              const code = queryParams.get("code");
-              if (!code) {
-                reject(new Error("authorization code가 없습니다"));
-                return;
-              }
-
-              exchangeGoogleAuthorizationCode(clientId, code, redirectUri, codeVerifier)
-                .then(resolve)
-                .catch(reject);
-            }
+          const params = new URLSearchParams(
+            callback.hash ? callback.hash.replace(/^#/, "") : callback.search.replace(/^\?/, "")
           );
-        })
-        .catch(reject);
+          if (params.get("state") !== state) {
+            reject(new Error("OAuth state가 일치하지 않습니다"));
+            return;
+          }
+
+          if (params.get("error")) {
+            reject(new Error(`Google 로그인 실패: ${params.get("error")}`));
+            return;
+          }
+
+          const accessToken = String(params.get("access_token") || "").trim();
+          if (!accessToken) {
+            reject(new Error("Google 토큰 응답에 access_token이 없습니다"));
+            return;
+          }
+
+          resolve({
+            accessToken,
+            expiresIn: toSafeNumber(params.get("expires_in"), 3600),
+            refreshToken: ""
+          });
+        }
+      );
     });
   }
 

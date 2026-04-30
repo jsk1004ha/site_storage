@@ -227,18 +227,8 @@ async function runBackgroundSync() {
   }
 
   if (token.accessTokenExpiresAt <= Date.now() + 15000) {
-    if (!token.refreshToken) {
-      await removeStorageKey(GOOGLE_TOKEN_KEY);
-      return { updated: false };
-    }
-    token = await refreshGoogleToken(config.clientId, token);
-    if (!token) {
-      await removeStorageKey(GOOGLE_TOKEN_KEY);
-      return { updated: false };
-    }
-    await setStorageValues({
-      [GOOGLE_TOKEN_KEY]: JSON.stringify(token)
-    });
+    await removeStorageKey(GOOGLE_TOKEN_KEY);
+    return { updated: false };
   }
 
   if (!token.accessToken) {
@@ -352,41 +342,6 @@ function parseGoogleToken(raw) {
       return null;
     }
     return { accessToken, accessTokenExpiresAt, refreshToken };
-  } catch (_error) {
-    return null;
-  }
-}
-
-async function refreshGoogleToken(clientId, token) {
-  try {
-    const payload = new URLSearchParams();
-    payload.set("client_id", clientId);
-    payload.set("refresh_token", token.refreshToken);
-    payload.set("grant_type", "refresh_token");
-
-    const response = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: payload.toString()
-    });
-    const json = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      return null;
-    }
-
-    const accessToken = String(json.access_token || "").trim();
-    if (!accessToken) {
-      return null;
-    }
-
-    const expiresIn = Math.max(120, toSafeNumber(json.expires_in, 3600));
-    return {
-      accessToken,
-      accessTokenExpiresAt: Date.now() + Math.max(60000, (expiresIn - 60) * 1000),
-      refreshToken: String(json.refresh_token || "").trim() || token.refreshToken
-    };
   } catch (_error) {
     return null;
   }

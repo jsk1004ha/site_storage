@@ -126,3 +126,25 @@ test("extension popup sidebar has a context-specific open override", () => {
     /body\[data-app-context="extension"\]\.side-open \.side-backdrop \{[^}]*pointer-events: auto/
   );
 });
+
+
+test("extension Google Drive login avoids client-secret token exchange", () => {
+  const appJs = read("app.js");
+
+  assert.match(appJs, /function buildGoogleImplicitAuthUrl/);
+  assert.match(appJs, /url\.searchParams\.set\("response_type", "token"\)/);
+  assert.doesNotMatch(
+    appJs,
+    /function getTokenForExtension[\s\S]*exchangeGoogleAuthorizationCode[\s\S]*function getTokenForWeb/,
+    "extension login must not exchange auth codes at oauth2.googleapis.com/token because configured web clients can require a client_secret"
+  );
+});
+
+
+test("Google Drive auth never posts to the OAuth token endpoint from static app code", () => {
+  const appJs = read("app.js");
+  const backgroundJs = read("extension/background.js");
+
+  assert.doesNotMatch(appJs, /oauth2\.googleapis\.com\/token/);
+  assert.doesNotMatch(backgroundJs, /oauth2\.googleapis\.com\/token/);
+});
