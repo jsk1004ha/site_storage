@@ -7,7 +7,9 @@ const {
   extractDomain,
   mergeData,
   normalizeData,
-  shouldUseCorsLinkHealthProbe
+  shouldUseCorsLinkHealthProbe,
+  shouldRenderRemoteImageUrl,
+  buildFallbackFaviconUrl
 } = loadAppExports();
 
 function toPlain(value) {
@@ -154,4 +156,25 @@ test("extractDomain strips www and rejects invalid urls", () => {
 test("link health probing skips CORS-only status checks for cross-origin bookmarks", () => {
   assert.equal(shouldUseCorsLinkHealthProbe("https://github.com/anthropics/prompt-eng-interactive-tutorial"), false);
   assert.equal(shouldUseCorsLinkHealthProbe("https://remember.test/local-page"), true);
+});
+
+
+test("card media skips noisy expiring and rate-limited external thumbnails", () => {
+  assert.equal(
+    shouldRenderRemoteImageUrl("https://opengraph.githubassets.com/hash/owner/repo", "https://github.com/owner/repo"),
+    false
+  );
+  assert.equal(
+    shouldRenderRemoteImageUrl("https://scontent-icn2-1.cdninstagram.com/v/t51/image.jpg", "https://instagram.com/example"),
+    false
+  );
+  assert.equal(
+    shouldRenderRemoteImageUrl("https://example.com/preview.png", "https://example.com/page"),
+    true
+  );
+});
+
+test("fallback favicon is inline to avoid noisy network 404s", () => {
+  const fallback = buildFallbackFaviconUrl("https://jsk1004ha.github.io/site_storage", "jsk1004ha.github.io");
+  assert.match(fallback, /^data:image\/svg\+xml,/);
 });

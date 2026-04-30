@@ -12,6 +12,8 @@ const TEST_EXPORT_REPLACEMENT = `  globalThis.__rememberTestExports = {
     extractDomain,
     normalizeLinkHealth,
     shouldUseCorsLinkHealthProbe,
+    shouldRenderRemoteImageUrl,
+    buildFallbackFaviconUrl,
     normalizeBookmark,
     normalizeData,
     mergeData,

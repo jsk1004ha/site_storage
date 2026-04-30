@@ -44,6 +44,7 @@
   const DRIVE_FILE_NAME = "remember-sync-v2.json";
   const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
   const GOOGLE_IDENTITY_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
+  const TRANSPARENT_PIXEL_SRC = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
   const GOOGLE_TOKEN_DURATION_DAY = "1d";
   const GOOGLE_TOKEN_DURATION_WEEK = "1w";
   const GOOGLE_TOKEN_DURATION_MONTH = "1m";
@@ -2519,7 +2520,7 @@
       fallbackCommitted = true;
     };
 
-    if (item.thumbUrl) {
+    if (item.thumbUrl && shouldRenderRemoteImageUrl(item.thumbUrl, item.url)) {
       const image = document.createElement("img");
       image.src = item.thumbUrl;
       image.alt = `${item.name || item.url} 썸네일`;
@@ -2542,9 +2543,49 @@
   function buildFallbackFaviconUrl(url, domain) {
     const normalizedDomain = String(domain || extractDomain(url) || "").trim();
     if (!normalizedDomain) {
-      return "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+      return TRANSPARENT_PIXEL_SRC;
     }
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(normalizedDomain)}&sz=64`;
+    return buildInlineFaviconUrl(normalizedDomain);
+  }
+
+  function shouldRenderRemoteImageUrl(imageUrl, pageUrl = "") {
+    const normalized = normalizeAssetUrl(imageUrl, pageUrl);
+    if (!normalized) {
+      return false;
+    }
+
+    try {
+      const { hostname } = new URL(normalized);
+      const lowerHost = hostname.toLowerCase();
+      if (
+        lowerHost === "opengraph.githubassets.com" ||
+        lowerHost.endsWith(".cdninstagram.com") ||
+        lowerHost === "cdninstagram.com"
+      ) {
+        return false;
+      }
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function buildInlineFaviconUrl(domain) {
+    const label = String(domain || "?").trim().slice(0, 1).toUpperCase() || "?";
+    const hue = Array.from(String(domain || "remember")).reduce(
+      (sum, char) => (sum + char.charCodeAt(0)) % 360,
+      0
+    );
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="hsl(${hue} 30% 18%)"/><text x="32" y="39" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="hsl(${hue} 55% 88%)">${escapeSvgText(label)}</text></svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }
+
+  function escapeSvgText(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   function createFaviconImage(faviconUrl, url, domain) {
@@ -2557,7 +2598,9 @@
       const fallback = buildFallbackFaviconUrl(url, domain);
       if (favicon.src !== fallback) {
         favicon.src = fallback;
+        return;
       }
+      favicon.src = TRANSPARENT_PIXEL_SRC;
     };
     return favicon;
   }
