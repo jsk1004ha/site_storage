@@ -6,7 +6,8 @@ const { loadAppExports } = require("./helpers/load-app-exports");
 const {
   extractDomain,
   mergeData,
-  normalizeData
+  normalizeData,
+  shouldUseCorsLinkHealthProbe
 } = loadAppExports();
 
 function toPlain(value) {
@@ -147,4 +148,10 @@ test("mergeData favors the newest bookmark or tombstone per id", () => {
 test("extractDomain strips www and rejects invalid urls", () => {
   assert.equal(extractDomain("https://www.remember.example/path"), "remember.example");
   assert.equal(extractDomain("notaurl"), "");
+});
+
+
+test("link health probing skips CORS-only status checks for cross-origin bookmarks", () => {
+  assert.equal(shouldUseCorsLinkHealthProbe("https://github.com/anthropics/prompt-eng-interactive-tutorial"), false);
+  assert.equal(shouldUseCorsLinkHealthProbe("https://remember.test/local-page"), true);
 });

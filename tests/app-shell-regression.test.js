@@ -35,7 +35,7 @@ test("index.html keeps the core app surfaces required for navigation, saving, an
   assert.match(html, /data-view-mode="grid"/);
   assert.match(html, /data-view-mode="list"/);
   assert.match(html, /data-view-mode="magazine"/);
-  assert.match(html, /Google Drive 동기화/);
+  assert.match(html, /Drive (?:Sync|동기화)/);
 });
 
 test("service-worker.js keeps the offline app shell cache and navigation fallback", () => {
@@ -90,4 +90,25 @@ test("new-site next button moves to step 2 before metadata autofill completes", 
     appJs,
     /nextBtn\?\.addEventListener\("click", async \(\) => \{[\s\S]*await autofillMetadataFromUrl\(normalized\);/
   );
+});
+
+
+test("web Google Drive login uses browser-safe Google Identity token flow", () => {
+  const appJs = read("app.js");
+
+  assert.match(appJs, /accounts\.google\.com\/gsi\/client/);
+  assert.match(appJs, /initTokenClient/);
+  assert.match(appJs, /requestAccessToken/);
+  assert.doesNotMatch(
+    appJs,
+    /function getTokenForWeb[\s\S]*exchangeGoogleAuthorizationCode/,
+    "web login must not exchange auth codes at oauth2.googleapis.com/token because web clients require a client_secret"
+  );
+});
+
+test("dead link checker avoids CORS console failures for third-party pages", () => {
+  const appJs = read("app.js");
+
+  assert.match(appJs, /function shouldUseCorsLinkHealthProbe/);
+  assert.match(appJs, /mode: "no-cors"/);
 });

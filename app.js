@@ -43,6 +43,7 @@
 
   const DRIVE_FILE_NAME = "remember-sync-v2.json";
   const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
+  const GOOGLE_IDENTITY_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
   const GOOGLE_TOKEN_DURATION_DAY = "1d";
   const GOOGLE_TOKEN_DURATION_WEEK = "1w";
   const GOOGLE_TOKEN_DURATION_MONTH = "1m";
@@ -96,6 +97,7 @@
   let sheetTagTokens = [];
   let deadLinkCheckScheduled = false;
   let deadLinkCheckInFlight = false;
+  let googleIdentityScriptPromise = null;
   let folderMetaMap = {};
   let lastScrollY = 0;
   let ctaHiddenByScroll = false;
@@ -1256,6 +1258,9 @@
       clearGoogleToken();
       clearDriveSyncCache();
       cancelAutoSync();
+      if (!IS_EXTENSION_CONTEXT) {
+        loadGoogleIdentityServices().catch(() => {});
+      }
       refreshDriveStatus();
       showToast("OAuth 설정을 저장했습니다");
     });
@@ -1364,6 +1369,9 @@
     }
     if (googleTokenDurationSelect) {
       googleTokenDurationSelect.value = config.tokenDuration;
+    }
+    if (!IS_EXTENSION_CONTEXT && config.clientId) {
+      loadGoogleIdentityServices().catch(() => {});
     }
   }
 
@@ -4138,6 +4146,17 @@
     const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
     try {
+      if (!shouldUseCorsLinkHealthProbe(normalized)) {
+        await fetch(normalized, {
+          method: "GET",
+          mode: "no-cors",
+          redirect: "follow",
+          cache: "no-store",
+          signal: controller ? controller.signal : undefined
+        });
+        return null;
+      }
+
       const headResponse = await fetch(normalized, {
         method: "HEAD",
         redirect: "follow",
@@ -4171,6 +4190,16 @@
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
+    }
+  }
+
+  function shouldUseCorsLinkHealthProbe(url) {
+    try {
+      const target = new URL(url);
+      const current = new URL(window.location.href || window.location.origin || "https://remember.local");
+      return target.origin === current.origin;
+    } catch (_error) {
+      return false;
     }
   }
 
@@ -4816,10 +4845,8 @@
       return;
     }
     const safeExpires = Math.max(120, expiresInSeconds);
-    const config = getGoogleConfig();
-    const configuredExpiresMs = getGoogleTokenDurationMs(config.tokenDuration);
     const oauthExpiresMs = Math.max(60000, (safeExpires - 60) * 1000);
-    const accessTokenExpiresAt = Date.now() + Math.max(configuredExpiresMs, oauthExpiresMs);
+    const accessTokenExpiresAt = Date.now() + oauthExpiresMs;
     const previous = getStoredGoogleToken();
     const safeRefreshToken = refreshToken || previous?.refreshToken || "";
     localStorage.setItem(
@@ -5041,76 +5068,90 @@
       throw new Error("웹에서 Drive 연동은 file:// 환경에서 동작하지 않습니다. localhost 또는 HTTPS에서 실행해주세요");
     }
 
-    return new Promise((resolve, reject) => {
-      const state = generateId();
-      const codeVerifier = generateCodeVerifier();
-      const redirect = new URL(window.location.href);
-      redirect.search = "";
-      redirect.hash = "";
-      redirect.searchParams.set("oauth_callback", "1");
-      const redirectUri = redirect.toString();
-      let popup = null;
-
-      generateCodeChallenge(codeVerifier)
-        .then((codeChallenge) => {
-          const authUrl = buildGoogleAuthUrl(clientId, redirectUri, state, codeChallenge);
-          popup = window.open(authUrl, "rememberGoogleOAuth", "width=540,height=720");
-          if (!popup) {
-            reject(new Error("팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요"));
+    return loadGoogleIdentityServices().then(
+      () =>
+        new Promise((resolve, reject) => {
+          if (!window.google?.accounts?.oauth2?.initTokenClient) {
+            reject(new Error("Google Identity Services를 초기화하지 못했습니다"));
             return;
           }
+
+          let settled = false;
+          const settle = (callback) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            callback();
+          };
+
+          const tokenClient = window.google.accounts.oauth2.initTokenClient({
+            client_id: clientId,
+            scope: DRIVE_SCOPE,
+            prompt: "consent",
+            callback: (response) => {
+              if (response?.error) {
+                settle(() => reject(new Error(`Google 로그인 실패: ${response.error}`)));
+                return;
+              }
+
+              const accessToken = String(response?.access_token || "").trim();
+              if (!accessToken) {
+                settle(() => reject(new Error("Google 토큰 응답에 access_token이 없습니다")));
+                return;
+              }
+
+              settle(() =>
+                resolve({
+                  accessToken,
+                  expiresIn: toSafeNumber(response.expires_in, 3600),
+                  refreshToken: ""
+                })
+              );
+            },
+            error_callback: (error) => {
+              const message = error?.message || error?.type || "Google 로그인이 취소되었습니다";
+              settle(() => reject(new Error(message)));
+            }
+          });
+
+          tokenClient.requestAccessToken({ prompt: "consent" });
         })
-        .catch(reject);
+    );
+  }
 
-      let handled = false;
-      const timer = setInterval(() => {
-        if (popup?.closed && !handled) {
-          cleanup();
-          reject(new Error("Google 로그인이 취소되었습니다"));
-        }
-      }, 400);
+  function loadGoogleIdentityServices() {
+    if (window.google?.accounts?.oauth2?.initTokenClient) {
+      return Promise.resolve();
+    }
 
-      function cleanup() {
-        clearInterval(timer);
-        window.removeEventListener("message", onMessage);
+    if (googleIdentityScriptPromise) {
+      return googleIdentityScriptPromise;
+    }
+
+    googleIdentityScriptPromise = new Promise((resolve, reject) => {
+      if (!document.head || typeof document.createElement !== "function") {
+        reject(new Error("Google 로그인 스크립트를 로드할 수 없습니다"));
+        return;
       }
 
-      function onMessage(event) {
-        if (event.origin !== window.location.origin) {
-          return;
-        }
-
-        const payload = event.data || {};
-        if (payload.source !== "remember-oauth") {
-          return;
-        }
-
-        const params = new URLSearchParams(String(payload.search || "").replace(/^\?/, ""));
-        if (params.get("state") !== state) {
-          return;
-        }
-
-        handled = true;
-        cleanup();
-
-        if (params.get("error")) {
-          reject(new Error(`Google 로그인 실패: ${params.get("error")}`));
-          return;
-        }
-
-        const code = params.get("code");
-        if (!code) {
-          reject(new Error("authorization code가 없습니다"));
-          return;
-        }
-
-        exchangeGoogleAuthorizationCode(clientId, code, redirectUri, codeVerifier)
-          .then(resolve)
-          .catch(reject);
+      const existing = document.querySelector(`script[src="${GOOGLE_IDENTITY_SCRIPT_SRC}"]`);
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error("Google 로그인 스크립트 로드 실패")), { once: true });
+        return;
       }
 
-      window.addEventListener("message", onMessage);
+      const script = document.createElement("script");
+      script.src = GOOGLE_IDENTITY_SCRIPT_SRC;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Google 로그인 스크립트 로드 실패"));
+      document.head.appendChild(script);
     });
+
+    return googleIdentityScriptPromise;
   }
 
   async function driveFetch(url, options = {}, allowRetry = true, authOptions = {}) {
