@@ -112,3 +112,17 @@ test("dead link checker avoids CORS console failures for third-party pages", () 
   assert.match(appJs, /function shouldUseCorsLinkHealthProbe/);
   assert.match(appJs, /mode: "no-cors"/);
 });
+
+
+test("extension popup sidebar has a context-specific open override", () => {
+  const css = read("app-style.css");
+
+  assert.match(
+    css,
+    /body\[data-app-context="extension"\]\.side-open \.side-panel \{[^}]*transform: translateX\(0\)/
+  );
+  assert.match(
+    css,
+    /body\[data-app-context="extension"\]\.side-open \.side-backdrop \{[^}]*pointer-events: auto/
+  );
+});
