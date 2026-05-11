@@ -99,6 +99,14 @@ test("web Google Drive login uses browser-safe Google Identity token flow", () =
   assert.match(appJs, /accounts\.google\.com\/gsi\/client/);
   assert.match(appJs, /initTokenClient/);
   assert.match(appJs, /requestAccessToken/);
+  assert.match(appJs, /function tryGetGoogleTokenSilently/);
+  assert.match(appJs, /getTokenForWeb\(clientId, \{ prompt: "none" \}\)/);
+  assert.doesNotMatch(appJs, /requestAccessToken\(\{\s*prompt:\s*"consent"\s*\}\)/);
+  assert.doesNotMatch(
+    appJs,
+    /response\.status === 401[\s\S]{0,220}authOptions\.interactive === false/,
+    "non-interactive sync should retry once through silent token refresh after a 401"
+  );
   assert.doesNotMatch(
     appJs,
     /function getTokenForWeb[\s\S]*exchangeGoogleAuthorizationCode/,
@@ -130,9 +138,18 @@ test("extension popup sidebar has a context-specific open override", () => {
 
 test("extension Google Drive login avoids client-secret token exchange", () => {
   const appJs = read("app.js");
+  const backgroundJs = read("extension/background.js");
 
   assert.match(appJs, /function buildGoogleImplicitAuthUrl/);
   assert.match(appJs, /url\.searchParams\.set\("response_type", "token"\)/);
+  assert.match(appJs, /getTokenForExtension\(clientId, \{[\s\S]*interactive: false,[\s\S]*prompt: "none"[\s\S]*\}\)/);
+  assert.doesNotMatch(appJs, /url\.searchParams\.set\("prompt", "consent"\)/);
+  assert.match(backgroundJs, /reason: "token-expired"/);
+  assert.doesNotMatch(
+    backgroundJs,
+    /if \(token\.accessTokenExpiresAt <= Date\.now\(\) \+ 15000\) \{\s*await removeStorageKey\(GOOGLE_TOKEN_KEY\);/,
+    "background sync must not delete expired tokens before the foreground can silently refresh"
+  );
   assert.doesNotMatch(
     appJs,
     /function getTokenForExtension[\s\S]*exchangeGoogleAuthorizationCode[\s\S]*function getTokenForWeb/,

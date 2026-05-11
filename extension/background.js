@@ -227,8 +227,7 @@ async function runBackgroundSync() {
   }
 
   if (token.accessTokenExpiresAt <= Date.now() + 15000) {
-    await removeStorageKey(GOOGLE_TOKEN_KEY);
-    return { updated: false };
+    return { updated: false, reason: "token-expired" };
   }
 
   if (!token.accessToken) {

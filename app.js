@@ -1461,7 +1461,7 @@
     if (!config.clientId) {
       return false;
     }
-    return !!getStoredGoogleToken();
+    return !!getStoredGoogleToken() || !!getDriveSyncCache().fileId;
   }
 
   function cancelAutoSync() {
@@ -1519,6 +1519,7 @@
     }
 
     let syncResult = { skipped: false, message: "" };
+    const hadTokenBeforeSync = !!getStoredGoogleToken();
 
     runDriveTask(
       async () => {
@@ -1549,6 +1550,9 @@
       }
 
       const now = Date.now();
+      if (!hadTokenBeforeSync && !getStoredGoogleToken()) {
+        return;
+      }
       if (now - lastAutoSyncErrorAt >= AUTO_SYNC_ERROR_COOLDOWN_MS) {
         lastAutoSyncErrorAt = now;
         showToast("자동 동기화 실패: 설정에서 Drive 상태를 확인해주세요");
@@ -4940,11 +4944,17 @@
       throw new Error("OAuth 설정에서 Client ID를 먼저 저장해주세요");
     }
 
+    const silentTokenResponse = await tryGetGoogleTokenSilently(config.clientId);
+    if (silentTokenResponse?.accessToken) {
+      saveGoogleToken(silentTokenResponse);
+      return silentTokenResponse.accessToken;
+    }
+
+    let tokenResponse;
     if (!interactive) {
       throw new Error("Google 로그인이 필요합니다. 설정에서 다시 연결해주세요");
     }
 
-    let tokenResponse;
     if (IS_EXTENSION_CONTEXT) {
       tokenResponse = await getTokenForExtension(config.clientId);
     } else {
@@ -4955,29 +4965,56 @@
     return tokenResponse.accessToken;
   }
 
-  function buildGoogleImplicitAuthUrl(clientId, redirectUri, state) {
+  async function tryGetGoogleTokenSilently(clientId) {
+    try {
+      if (IS_EXTENSION_CONTEXT) {
+        return await getTokenForExtension(clientId, {
+          interactive: false,
+          prompt: "none"
+        });
+      }
+
+      return await getTokenForWeb(clientId, { prompt: "none" });
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function buildGoogleImplicitAuthUrl(clientId, redirectUri, state, options = {}) {
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("response_type", "token");
     url.searchParams.set("scope", DRIVE_SCOPE);
     url.searchParams.set("state", state);
-    url.searchParams.set("prompt", "consent");
+    const prompt = typeof options.prompt === "string" ? options.prompt.trim() : "";
+    if (prompt) {
+      url.searchParams.set("prompt", prompt);
+    }
     url.searchParams.set("include_granted_scopes", "true");
     return url.toString();
   }
 
-  function getTokenForExtension(clientId) {
+  function getTokenForExtension(clientId, options = {}) {
     return new Promise((resolve, reject) => {
       const redirectUri = `https://${chrome.runtime.id}.chromiumapp.org/`;
       const state = generateId();
-      const authUrl = buildGoogleImplicitAuthUrl(clientId, redirectUri, state);
+      const interactive = options.interactive !== false;
+      const authUrl = buildGoogleImplicitAuthUrl(clientId, redirectUri, state, {
+        prompt: options.prompt
+      });
+      const flowDetails = {
+        url: authUrl,
+        interactive
+      };
+
+      if (!interactive) {
+        flowDetails.abortOnLoadForNonInteractive = false;
+        flowDetails.timeoutMsForNonInteractive = 10000;
+      }
 
       chrome.identity.launchWebAuthFlow(
-        {
-          url: authUrl,
-          interactive: true
-        },
+        flowDetails,
         (redirectedUrl) => {
           if (chrome.runtime.lastError) {
             reject(new Error(chrome.runtime.lastError.message));
@@ -5026,10 +5063,12 @@
     });
   }
 
-  function getTokenForWeb(clientId) {
+  function getTokenForWeb(clientId, options = {}) {
     if (window.location.protocol === "file:") {
       throw new Error("웹에서 Drive 연동은 file:// 환경에서 동작하지 않습니다. localhost 또는 HTTPS에서 실행해주세요");
     }
+
+    const prompt = typeof options.prompt === "string" ? options.prompt : "";
 
     return loadGoogleIdentityServices().then(
       () =>
@@ -5051,7 +5090,7 @@
           const tokenClient = window.google.accounts.oauth2.initTokenClient({
             client_id: clientId,
             scope: DRIVE_SCOPE,
-            prompt: "consent",
+            prompt,
             callback: (response) => {
               if (response?.error) {
                 settle(() => reject(new Error(`Google 로그인 실패: ${response.error}`)));
@@ -5078,7 +5117,7 @@
             }
           });
 
-          tokenClient.requestAccessToken({ prompt: "consent" });
+          tokenClient.requestAccessToken({ prompt });
         })
     );
   }
@@ -5129,9 +5168,6 @@
 
     if (response.status === 401 && allowRetry) {
       clearGoogleToken();
-      if (authOptions.interactive === false) {
-        throw new Error("Google 로그인이 필요합니다. 설정에서 다시 연결해주세요");
-      }
       return driveFetch(url, options, false, authOptions);
     }
 

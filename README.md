@@ -125,7 +125,7 @@ python -m http.server 5500
 
 동작 방식:
 - 웹앱은 Google Identity Services 토큰 플로우를 사용해 브라우저에서 안전하게 access token만 발급받습니다.
-- access token이 만료되면 Google 연결 버튼 또는 동기화 작업 중 다시 동의를 요청할 수 있습니다.
+- access token이 만료되면 저장된 Google 권한을 이용해 먼저 조용한 재발급을 시도하며, 권한이 없거나 브라우저 세션이 끊긴 경우에만 Google 연결/동기화 작업 중 다시 로그인을 요청합니다.
 - 확장프로그램도 Chrome Identity 팝업에서 access token을 직접 받아 사용하며, 정적 앱 코드에서는 `oauth2.googleapis.com/token`에 직접 요청하지 않습니다.
 
 ## 사용 흐름 예시
@@ -170,7 +170,7 @@ Drive 파일명은 `remember-sync-v2.json`입니다.
 - 읽기 모드와 메타데이터 추출은 사이트별 CORS 정책에 영향을 받습니다.
 - 웹앱에서는 HTML 가져오기에 실패할 경우 `allorigins.win`, `r.jina.ai` 같은 외부 경유 경로를 사용합니다.
 - 죽은 링크 검사는 `HEAD` 또는 `GET` 요청 결과에 의존하므로 일부 사이트에서는 정확하지 않을 수 있습니다.
-- Google Drive 동기화는 인증 토큰이 만료되면 다시 로그인해야 합니다.
+- Google Drive 동기화는 토큰 만료 시 자동 재연결을 먼저 시도하지만, Google 계정 세션이 만료되었거나 권한이 취소되면 다시 로그인해야 합니다.
 - 백그라운드 자동 동기화에는 대량 삭제 감지 안전모드가 있어, 위험한 상황에서는 자동 동기화를 중단합니다.
 
 ## 문제 해결
