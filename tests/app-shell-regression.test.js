@@ -121,7 +121,10 @@ test("web Google Drive login uses browser-safe Google Identity token flow", () =
   assert.match(appJs, /initTokenClient/);
   assert.match(appJs, /requestAccessToken/);
   assert.match(appJs, /function tryGetGoogleTokenSilently/);
-  assert.match(appJs, /getTokenForWeb\(clientId, \{ prompt: "none" \}\)/);
+  assert.match(appJs, /function isStoredGoogleTokenFresh/);
+  assert.match(appJs, /if \(!IS_EXTENSION_CONTEXT\) \{\s*return isStoredGoogleTokenFresh\(\);/);
+  assert.match(appJs, /taskResult = task\(\);/);
+  assert.doesNotMatch(appJs, /getTokenForWeb\(clientId, \{\s*prompt: "none"/);
   assert.doesNotMatch(appJs, /requestAccessToken\(\{\s*prompt:\s*"consent"\s*\}\)/);
   assert.doesNotMatch(
     appJs,

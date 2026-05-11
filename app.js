@@ -632,8 +632,10 @@
         heroSyncDetail.textContent = "Drive와 동기화 중";
       } else if (lastSyncAt) {
         heroSyncDetail.textContent = `마지막 동기화 ${formatRelativeTime(lastSyncAt)}`;
-      } else if (getStoredGoogleToken()) {
+      } else if (isStoredGoogleTokenFresh()) {
         heroSyncDetail.textContent = "연결됨 · 아직 동기화 전";
+      } else if (getStoredGoogleToken()) {
+        heroSyncDetail.textContent = "로그인 만료 · Google 연결 필요";
       } else {
         heroSyncDetail.textContent = "최근 동기화 기록 없음";
       }
@@ -1385,9 +1387,16 @@
     }
 
     const token = getStoredGoogleToken();
-    if (token) {
+    if (isStoredGoogleTokenFresh(token)) {
       driveStatusEl.textContent = "연결됨";
       driveStatusEl.className = "drive-status connected";
+      updateWorkspaceSummary(currentRenderItems.length);
+      return;
+    }
+
+    if (token) {
+      driveStatusEl.textContent = "재연결 필요";
+      driveStatusEl.className = "drive-status offline";
       updateWorkspaceSummary(currentRenderItems.length);
       return;
     }
@@ -1456,6 +1465,9 @@
     const config = getGoogleConfig();
     if (!config.clientId) {
       return false;
+    }
+    if (!IS_EXTENSION_CONTEXT) {
+      return isStoredGoogleTokenFresh();
     }
     return !!getStoredGoogleToken() || !!getDriveSyncCache().fileId;
   }
@@ -1564,8 +1576,14 @@
     syncInFlight = true;
     refreshDriveStatus("syncing");
 
-    return Promise.resolve()
-      .then(task)
+    let taskResult;
+    try {
+      taskResult = task();
+    } catch (error) {
+      taskResult = Promise.reject(error);
+    }
+
+    return Promise.resolve(taskResult)
       .then(() => true)
       .catch((error) => {
         if (!options.silent) {
@@ -4880,6 +4898,10 @@
     }
   }
 
+  function isStoredGoogleTokenFresh(token = getStoredGoogleToken()) {
+    return !!token?.accessToken && token.accessTokenExpiresAt > Date.now() + 15000;
+  }
+
   function saveGoogleToken(tokenPayload = {}) {
     const accessToken = String(tokenPayload.accessToken || "").trim();
     const refreshToken = String(tokenPayload.refreshToken || "").trim();
@@ -4931,7 +4953,7 @@
   async function ensureGoogleToken(options = {}) {
     const interactive = options.interactive !== false;
     const cached = getStoredGoogleToken();
-    if (cached?.accessToken && cached.accessTokenExpiresAt > Date.now() + 15000) {
+    if (isStoredGoogleTokenFresh(cached)) {
       return cached.accessToken;
     }
 
@@ -4940,10 +4962,12 @@
       throw new Error("OAuth 설정에서 Client ID를 먼저 저장해주세요");
     }
 
-    const silentTokenResponse = await tryGetGoogleTokenSilently(config.clientId);
-    if (silentTokenResponse?.accessToken) {
-      saveGoogleToken(silentTokenResponse);
-      return silentTokenResponse.accessToken;
+    if (IS_EXTENSION_CONTEXT) {
+      const silentTokenResponse = await tryGetGoogleTokenSilently(config.clientId);
+      if (silentTokenResponse?.accessToken) {
+        saveGoogleToken(silentTokenResponse);
+        return silentTokenResponse.accessToken;
+      }
     }
 
     let tokenResponse;
@@ -4963,14 +4987,14 @@
 
   async function tryGetGoogleTokenSilently(clientId) {
     try {
-      if (IS_EXTENSION_CONTEXT) {
-        return await getTokenForExtension(clientId, {
-          interactive: false,
-          prompt: "none"
-        });
+      if (!IS_EXTENSION_CONTEXT) {
+        return null;
       }
 
-      return await getTokenForWeb(clientId, { prompt: "none" });
+      return await getTokenForExtension(clientId, {
+        interactive: false,
+        prompt: "none"
+      });
     } catch (_error) {
       return null;
     }
@@ -5066,56 +5090,61 @@
 
     const prompt = typeof options.prompt === "string" ? options.prompt : "";
 
-    return loadGoogleIdentityServices().then(
-      () =>
-        new Promise((resolve, reject) => {
-          if (!window.google?.accounts?.oauth2?.initTokenClient) {
-            reject(new Error("Google Identity Services를 초기화하지 못했습니다"));
-            return;
-          }
+    if (!window.google?.accounts?.oauth2?.initTokenClient) {
+      loadGoogleIdentityServices().catch(() => {});
+      throw new Error("Google 로그인 준비 중입니다. 잠시 후 Google 연결을 다시 눌러주세요");
+    }
 
-          let settled = false;
-          const settle = (callback) => {
-            if (settled) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const settle = (callback) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        callback();
+      };
+
+      try {
+        const tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: DRIVE_SCOPE,
+          prompt,
+          callback: (response) => {
+            if (response?.error) {
+              settle(() => reject(new Error(`Google 로그인 실패: ${response.error}`)));
               return;
             }
-            settled = true;
-            callback();
-          };
 
-          const tokenClient = window.google.accounts.oauth2.initTokenClient({
-            client_id: clientId,
-            scope: DRIVE_SCOPE,
-            prompt,
-            callback: (response) => {
-              if (response?.error) {
-                settle(() => reject(new Error(`Google 로그인 실패: ${response.error}`)));
-                return;
-              }
-
-              const accessToken = String(response?.access_token || "").trim();
-              if (!accessToken) {
-                settle(() => reject(new Error("Google 토큰 응답에 access_token이 없습니다")));
-                return;
-              }
-
-              settle(() =>
-                resolve({
-                  accessToken,
-                  expiresIn: toSafeNumber(response.expires_in, 3600),
-                  refreshToken: ""
-                })
-              );
-            },
-            error_callback: (error) => {
-              const message = error?.message || error?.type || "Google 로그인이 취소되었습니다";
-              settle(() => reject(new Error(message)));
+            const accessToken = String(response?.access_token || "").trim();
+            if (!accessToken) {
+              settle(() => reject(new Error("Google 토큰 응답에 access_token이 없습니다")));
+              return;
             }
-          });
 
-          tokenClient.requestAccessToken({ prompt });
-        })
-    );
+            settle(() =>
+              resolve({
+                accessToken,
+                expiresIn: toSafeNumber(response.expires_in, 3600),
+                refreshToken: ""
+              })
+            );
+          },
+          error_callback: (error) => {
+            const rawMessage = error?.message || error?.type || "Google 로그인이 취소되었습니다";
+            const message = /popup/i.test(rawMessage)
+              ? "Google 로그인 팝업이 차단되었습니다. 팝업을 허용한 뒤 Google 연결 버튼을 다시 눌러주세요"
+              : rawMessage;
+            settle(() => reject(new Error(message)));
+          }
+        });
+
+        tokenClient.requestAccessToken({ prompt });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Google 로그인을 시작하지 못했습니다";
+        settle(() => reject(new Error(message)));
+      }
+    });
   }
 
   function loadGoogleIdentityServices() {
@@ -5164,6 +5193,9 @@
 
     if (response.status === 401 && allowRetry) {
       clearGoogleToken();
+      if (!IS_EXTENSION_CONTEXT) {
+        throw new Error("Google 로그인 세션이 만료되었습니다. Google 연결 버튼을 다시 눌러주세요");
+      }
       return driveFetch(url, options, false, authOptions);
     }
 

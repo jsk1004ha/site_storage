@@ -120,12 +120,12 @@ python -m http.server 5500
 1. 설정 패널을 엽니다.
 2. `Google Drive 동기화` > `OAuth 설정`으로 이동합니다.
 3. `Google OAuth Client ID`를 입력하고 저장합니다.
-4. `Google 연결`을 눌러 최초 1회 동의(offline access)를 완료합니다.
+4. `Google 연결`을 눌러 최초 1회 동의를 완료합니다.
 5. 필요에 따라 `양방향 동기화`, `Drive 저장`, `Drive 불러오기`를 사용합니다.
 
 동작 방식:
 - 웹앱은 Google Identity Services 토큰 플로우를 사용해 브라우저에서 안전하게 access token만 발급받습니다.
-- access token이 만료되면 저장된 Google 권한을 이용해 먼저 조용한 재발급을 시도하며, 권한이 없거나 브라우저 세션이 끊긴 경우에만 Google 연결/동기화 작업 중 다시 로그인을 요청합니다.
+- 웹앱의 access token은 Google 정책에 따라 사용자 클릭으로만 다시 발급받습니다. 자동 동기화는 아직 유효한 토큰이 있을 때만 실행하며, 만료되면 `Google 연결` 또는 수동 동기화 버튼을 다시 눌러 재연결합니다.
 - 확장프로그램도 Chrome Identity 팝업에서 access token을 직접 받아 사용하며, 정적 앱 코드에서는 `oauth2.googleapis.com/token`에 직접 요청하지 않습니다.
 
 ## 사용 흐름 예시
@@ -170,7 +170,7 @@ Drive 파일명은 `remember-sync-v2.json`입니다.
 - 읽기 모드와 메타데이터 추출은 사이트별 CORS 정책에 영향을 받습니다.
 - 웹앱에서는 HTML 가져오기에 실패할 경우 `allorigins.win`, `r.jina.ai` 같은 외부 경유 경로를 사용합니다.
 - 죽은 링크 검사는 `HEAD` 또는 `GET` 요청 결과에 의존하므로 일부 사이트에서는 정확하지 않을 수 있습니다.
-- Google Drive 동기화는 토큰 만료 시 자동 재연결을 먼저 시도하지만, Google 계정 세션이 만료되었거나 권한이 취소되면 다시 로그인해야 합니다.
+- Google Drive 동기화는 토큰이 만료되었거나 Google 계정 세션/권한이 끊기면 다시 로그인해야 합니다.
 - 백그라운드 자동 동기화에는 대량 삭제 감지 안전모드가 있어, 위험한 상황에서는 자동 동기화를 중단합니다.
 
 ## 문제 해결
