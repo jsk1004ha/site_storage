@@ -363,6 +363,7 @@ h1, h2, h3, p { margin: 0; }
 .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .section-header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .section-header-flex h3 { margin: 0; }
+.settings-section .helper-text + .btn-row { margin-top: 12px; }
 .status-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 600; }
 .status-badge.offline { background: var(--color-bg-hover); color: var(--color-text-secondary); }
 .status-badge.syncing { background: #DBEAFE; color: #1D4ED8; }
@@ -428,8 +429,7 @@ body[data-theme="dark"] .status-badge.connected { background: rgba(22, 101, 52, 
 .toast button:hover { opacity: 1; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
-/* FAB & Bottom Utils */
-.bottom-utils { position: fixed; left: 24px; bottom: 24px; z-index: 50; }
+/* FAB */
 .bottom-cta { position: fixed; right: 24px; bottom: 24px; z-index: 50; display: flex; gap: 12px; align-items: center; }
 .fab { width: 48px; height: 48px; border-radius: 24px; padding: 0; display: flex; justify-content: center; align-items: center; transition: width 0.2s; overflow: hidden; }
 .fab span { display: none; }
@@ -476,7 +476,6 @@ body[data-app-context="extension"] .controls-group { display: grid; grid-templat
 body[data-app-context="extension"] .view-toggle { grid-column: 1 / -1; display: flex; }
 body[data-app-context="extension"] .view-toggle button { flex: 1; }
 body[data-app-context="extension"] .bottom-cta { bottom: 12px; right: 12px; }
-body[data-app-context="extension"] .bottom-utils { display: none; }
 body[data-app-context="extension"] .floating-bulk { bottom: 12px; width: calc(100% - 24px); border-radius: var(--radius-md); }
 body[data-app-context="extension"] .bulk-actions { flex-direction: column; align-items: stretch; }
 body[data-app-context="extension"] .modal-panel { width: calc(100% - 24px); max-height: calc(100% - 24px); }

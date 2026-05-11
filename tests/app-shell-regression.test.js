@@ -38,6 +38,27 @@ test("index.html keeps the core app surfaces required for navigation, saving, an
   assert.match(html, /Drive (?:Sync|동기화)/);
 });
 
+test("bookmarklet action lives inside settings instead of a floating utility", () => {
+  const html = read("index.html");
+  const settingsStart = html.indexOf('id="settingsOverlay"');
+  const settingsEnd = html.indexOf('<div class="bottom-cta">');
+  const settingsHtml = html.slice(settingsStart, settingsEnd);
+
+  assert.notEqual(settingsStart, -1, "settings overlay should exist");
+  assert.notEqual(settingsEnd, -1, "bottom CTA should exist after settings");
+  assert.match(settingsHtml, /id="bookmarkletBtn"/);
+  assert.doesNotMatch(html, /class="bottom-utils"/);
+});
+
+test("extension direct-add CTA uses an icon-only plus button", () => {
+  const html = read("extension/popup.html");
+  const openSheetButton = html.match(/<button id="openSheetBtn"[\s\S]*?<\/button>/)?.[0] || "";
+
+  assert.match(openSheetButton, /aria-label="직접 추가"/);
+  assert.match(openSheetButton, /<svg[\s\S]*x1="12"[\s\S]*x2="12"[\s\S]*x1="5"[\s\S]*x2="19"/);
+  assert.doesNotMatch(openSheetButton, />\s*직접 추가\s*</);
+});
+
 test("service-worker.js keeps the offline app shell cache and navigation fallback", () => {
   const sw = read("service-worker.js");
 

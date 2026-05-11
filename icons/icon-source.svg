@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Remember app icon</title>
+  <desc id="desc">A rounded blue archive tile with layered bookmark cards.</desc>
+  <defs>
+    <linearGradient id="bg" x1="76" y1="42" x2="426" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(386 94) rotate(129) scale(420)">
+      <stop stop-color="#38BDF8" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="18" y="18" width="476" height="476" rx="116" fill="url(#bg)"/>
+  <rect x="18" y="18" width="476" height="476" rx="116" fill="url(#glow)"/>
+  <path d="M126 105h192a24 24 0 0 1 24 24v248L236 299 126 377V105Z" fill="#FFFFFF" opacity="0.34"/>
+  <path d="M166 110h196v302L264 340l-98 72V110Z" fill="#020617" opacity="0.22"/>
+  <path d="M166 110h196v302L264 340l-98 72V110Z" fill="#FFFFFF" opacity="0.96"/>
+  <rect x="207" y="164" width="112" height="26" rx="13" fill="#2563EB" opacity="0.7"/>
+  <rect x="207" y="207" width="80" height="24" rx="12" fill="#0EA5E9" opacity="0.6"/>
+  <circle cx="336" cy="146" r="18" fill="#7DD3FC"/>
+</svg>

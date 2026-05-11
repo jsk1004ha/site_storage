@@ -171,7 +171,6 @@
   const bookmarkletBtn = byId("bookmarkletBtn");
   const saveCurrentTabBtn = byId("saveCurrentTabBtn");
   const scrollTopBtn = byId("scrollTopBtn");
-  const bottomUtils = document.querySelector(".bottom-utils");
   const bottomCta = openSheetBtn?.closest(".bottom-cta") || null;
   const settingsOverlay = byId("settingsOverlay");
   const openSettingsBtn = byId("openSettingsBtn");
@@ -286,20 +285,17 @@
   }
 
   function updateFloatingCtaVisibility() {
-    if (!bottomCta && !bottomUtils) {
+    if (!bottomCta) {
       return;
     }
 
     const compact = isCompactDeviceLayout();
     const nextHidden = compact && ctaHiddenByScroll;
     bottomCta?.classList.toggle("is-hidden", nextHidden);
-    if (APP_CONTEXT === "extension") {
-      bottomUtils?.classList.toggle("is-hidden", nextHidden);
-    }
     openSheetBtn?.classList.toggle("fab", compact);
     saveCurrentTabBtn?.classList.remove("fab-side");
     if (openSheetBtn) {
-      openSheetBtn.setAttribute("aria-label", "새 사이트 추가");
+      openSheetBtn.setAttribute("aria-label", IS_EXTENSION_CONTEXT ? "직접 추가" : "새 사이트 추가");
     }
   }
 
